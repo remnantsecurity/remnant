@@ -1,0 +1,16 @@
+{
+  "id": "name-control-character",
+  "category": "regression",
+  "description": "Package name contains a JSON-escaped newline control character.",
+  "expected": {
+    "package_json": "pass",
+    "install_script_policy": "pass",
+    "exit_code": 0,
+    "policy_findings": []
+  },
+  "safety": {
+    "executes_code": false,
+    "network_access": false,
+    "host_persistence": false
+  }
+}

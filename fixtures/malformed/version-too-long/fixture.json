@@ -1,0 +1,17 @@
+{
+  "id": "version-too-long",
+  "category": "malformed",
+  "description": "Package version exceeds the current deterministic package version byte limit.",
+  "expected": {
+    "package_json": "fail",
+    "package_json_error": "VersionIsTooLong",
+    "install_script_policy": "not_evaluated",
+    "exit_code": 1,
+    "policy_findings": []
+  },
+  "safety": {
+    "executes_code": false,
+    "network_access": false,
+    "host_persistence": false
+  }
+}

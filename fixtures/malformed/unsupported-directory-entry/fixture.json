@@ -1,0 +1,19 @@
+{
+  "id": "unsupported-directory-entry",
+  "category": "malformed",
+  "description": "Artifact contains a directory entry, which Remnant currently rejects.",
+  "artifact": "artifact.tgz",
+  "expected": {
+    "archive_inspection": "fail",
+    "archive_error": "ArchiveEntryTypeUnsupported",
+    "package_json": "not_evaluated",
+    "install_script_policy": "not_evaluated",
+    "exit_code": 1,
+    "policy_findings": []
+  },
+  "safety": {
+    "executes_code": false,
+    "network_access": false,
+    "host_persistence": false
+  }
+}

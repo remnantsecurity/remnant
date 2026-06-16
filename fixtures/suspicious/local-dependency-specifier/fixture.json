@@ -1,0 +1,16 @@
+{
+  "id": "local-dependency-specifier",
+  "category": "suspicious",
+  "description": "Package metadata declares a dependency using npm's local file dependency specifier form.",
+  "expected": {
+    "package_json": "pass",
+    "local_dependency_specifier_policy": "fail",
+    "exit_code": 2,
+    "policy_findings": ["local-dependency-specifier-disallowed"]
+  },
+  "safety": {
+    "executes_code": false,
+    "network_access": false,
+    "host_persistence": false
+  }
+}

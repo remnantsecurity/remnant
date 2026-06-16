@@ -1,0 +1,45 @@
+name: Remnant inspect example
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    name: Inspect generated npm artifact
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Create minimal npm package artifact
+        shell: bash
+        run: |
+          set -eu
+
+          python3 - <<'PY'
+          import io
+          import tarfile
+          from pathlib import Path
+
+          output_dir = Path("target/remnant-action-example")
+          output_dir.mkdir(parents=True, exist_ok=True)
+
+          package_json = b'{"name":"remnant-action-example","version":"1.0.0"}\n'
+          package_json_entry = tarfile.TarInfo("package/package.json")
+          package_json_entry.size = len(package_json)
+          package_json_entry.mode = 0o644
+          package_json_entry.mtime = 0
+
+          with tarfile.open(output_dir / "package.tgz", "w:gz") as archive:
+              archive.addfile(package_json_entry, io.BytesIO(package_json))
+          PY
+
+      - name: Inspect artifact with Remnant
+        uses: ./.github/actions/remnant-inspect
+        with:
+          artifact: target/remnant-action-example/package.tgz
+          json: "true"

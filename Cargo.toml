@@ -1,0 +1,27 @@
+[package]
+name = "remnant"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Deterministic npm artifact admission for local and CI supply-chain checks."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/remnantsecurity/remnant"
+readme = "README.md"
+keywords = ["npm", "supply-chain", "security", "cli", "artifacts"]
+categories = ["command-line-utilities", "development-tools"]
+include = [
+    "/Cargo.lock",
+    "/Cargo.toml",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
+    "/README.md",
+    "/fixtures/**",
+    "/src/**",
+    "/tests/**",
+]
+
+[dependencies]
+clap = { version = "4.6.1", features = ["derive"] }
+flate2 = "1.1.9"
+serde_json = "1.0.145"
+tar = "0.4.46"

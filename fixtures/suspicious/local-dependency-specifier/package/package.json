@@ -1,0 +1,7 @@
+{
+  "name": "fixture-local-dependency-specifier",
+  "version": "1.0.0",
+  "dependencies": {
+    "local-tool": "file:../local-tool"
+  }
+}

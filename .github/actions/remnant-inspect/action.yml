@@ -1,0 +1,50 @@
+name: Remnant Inspect
+
+description: Inspect an npm .tgz artifact with the Remnant CLI.
+
+inputs:
+  artifact:
+    description: Path to the npm .tgz artifact to inspect. Relative paths are resolved from the workflow workspace by default.
+    required: true
+  json:
+    description: Emit Remnant's machine-readable JSON report.
+    required: false
+    default: "false"
+  working-directory:
+    description: Directory where the artifact path should be resolved.
+    required: false
+    default: "."
+
+runs:
+  using: composite
+  steps:
+    - name: Ensure stable Rust toolchain is available
+      shell: bash
+      run: rustup toolchain install stable --profile minimal
+
+    - name: Inspect artifact
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        REMNANT_ARTIFACT: ${{ inputs.artifact }}
+        REMNANT_JSON: ${{ inputs.json }}
+        REMNANT_ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -eu
+
+        case "$REMNANT_JSON" in
+          true|false)
+            ;;
+          *)
+            echo "error: json input must be 'true' or 'false'" >&2
+            exit 1
+            ;;
+        esac
+
+        remnant_repo="$REMNANT_ACTION_PATH/../../.."
+
+        if [ "$REMNANT_JSON" = "true" ]; then
+          cargo +stable run --locked --manifest-path "$remnant_repo/Cargo.toml" -- inspect --json "$REMNANT_ARTIFACT"
+        else
+          cargo +stable run --locked --manifest-path "$remnant_repo/Cargo.toml" -- inspect "$REMNANT_ARTIFACT"
+        fi

@@ -1,0 +1,7 @@
+{
+  "name": "fixture-dependency-specifier-not-string",
+  "version": "1.0.0",
+  "dependencies": {
+    "left-pad": true
+  }
+}

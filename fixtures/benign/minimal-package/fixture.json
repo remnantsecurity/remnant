@@ -1,0 +1,16 @@
+{
+  "id": "minimal-package",
+  "category": "benign",
+  "description": "Minimal package metadata with no lifecycle scripts.",
+  "expected": {
+    "package_json": "pass",
+    "install_script_policy": "pass",
+    "exit_code": 0,
+    "policy_findings": []
+  },
+  "safety": {
+    "executes_code": false,
+    "network_access": false,
+    "host_persistence": false
+  }
+}

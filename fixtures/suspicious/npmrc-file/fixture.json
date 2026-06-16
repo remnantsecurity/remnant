@@ -1,0 +1,17 @@
+{
+  "id": "npmrc-file",
+  "category": "suspicious",
+  "description": "Package artifact contains package/.npmrc, which can influence npm behavior.",
+  "expected": {
+    "package_json": "pass",
+    "install_script_policy": "pass",
+    "suspicious_file_policy": "fail",
+    "exit_code": 2,
+    "policy_findings": ["suspicious-file-detected"]
+  },
+  "safety": {
+    "executes_code": false,
+    "network_access": false,
+    "host_persistence": false
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "path-traversal-archive-entry",
+  "category": "malformed",
+  "description": "Artifact contains an archive entry path with parent-directory traversal.",
+  "artifact": "artifact.tgz",
+  "expected": {
+    "archive_inspection": "fail",
+    "archive_error": "ArchiveEntryPathUnsafe",
+    "package_json": "not_evaluated",
+    "install_script_policy": "not_evaluated",
+    "exit_code": 1,
+    "policy_findings": []
+  },
+  "safety": {
+    "executes_code": false,
+    "network_access": false,
+    "host_persistence": false
+  }
+}

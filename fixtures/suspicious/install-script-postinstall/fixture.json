@@ -1,0 +1,16 @@
+{
+  "id": "install-script-postinstall",
+  "category": "suspicious",
+  "description": "Package metadata declares a postinstall hook for install-script policy testing.",
+  "expected": {
+    "package_json": "pass",
+    "install_script_policy": "fail",
+    "exit_code": 2,
+    "policy_findings": ["install-scripts-disallowed"]
+  },
+  "safety": {
+    "executes_code": false,
+    "network_access": false,
+    "host_persistence": false
+  }
+}

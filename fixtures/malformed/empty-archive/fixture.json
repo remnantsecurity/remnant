@@ -1,0 +1,19 @@
+{
+  "id": "empty-archive",
+  "category": "malformed",
+  "description": "Artifact is a valid gzip-compressed tar archive with zero entries.",
+  "artifact": "artifact.tgz",
+  "expected": {
+    "archive_inspection": "fail",
+    "archive_error": "ArchiveIsEmpty",
+    "package_json": "not_evaluated",
+    "install_script_policy": "not_evaluated",
+    "exit_code": 1,
+    "policy_findings": []
+  },
+  "safety": {
+    "executes_code": false,
+    "network_access": false,
+    "host_persistence": false
+  }
+}

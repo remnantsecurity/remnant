@@ -1,0 +1,7 @@
+/target
+.zed/
+.vscode/
+.env
+.env.*
+.DS_Store
+artifacts/

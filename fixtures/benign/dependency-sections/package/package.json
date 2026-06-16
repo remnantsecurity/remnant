@@ -1,0 +1,17 @@
+{
+  "name": "fixture-dependency-sections",
+  "version": "1.0.0",
+  "dependencies": {
+    "zeta": "^1.0.0",
+    "alpha": "~2.0.0"
+  },
+  "devDependencies": {
+    "test-tool": "3.0.0"
+  },
+  "optionalDependencies": {
+    "optional-tool": "4.0.0"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  }
+}

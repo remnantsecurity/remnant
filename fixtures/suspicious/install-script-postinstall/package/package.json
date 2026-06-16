@@ -1,0 +1,7 @@
+{
+  "name": "fixture-install-script-postinstall",
+  "version": "1.0.0",
+  "scripts": {
+    "postinstall": "node ./does-not-exist.js"
+  }
+}

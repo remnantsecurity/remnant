@@ -1,0 +1,19 @@
+{
+  "id": "non-gzip-tgz",
+  "category": "malformed",
+  "description": "Artifact has a .tgz extension but is not a gzip stream.",
+  "artifact": "artifact.tgz",
+  "expected": {
+    "archive_inspection": "fail",
+    "archive_error": "ArchiveReadFailed",
+    "package_json": "not_evaluated",
+    "install_script_policy": "not_evaluated",
+    "exit_code": 1,
+    "policy_findings": []
+  },
+  "safety": {
+    "executes_code": false,
+    "network_access": false,
+    "host_persistence": false
+  }
+}

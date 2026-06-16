@@ -1,0 +1,17 @@
+{
+  "id": "non-object-package-json",
+  "category": "malformed",
+  "description": "package.json top-level JSON value is not an object.",
+  "expected": {
+    "package_json": "fail",
+    "package_json_error": "TopLevelIsNotObject",
+    "install_script_policy": "not_evaluated",
+    "exit_code": 1,
+    "policy_findings": []
+  },
+  "safety": {
+    "executes_code": false,
+    "network_access": false,
+    "host_persistence": false
+  }
+}
