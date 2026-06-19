@@ -83,7 +83,13 @@ Policy checks use already-validated archive paths and package metadata. They do 
 
 ## Installation
 
-Remnant can currently be run from source during development. Packaged installation instructions will be added when a distribution artifact exists.
+Install the Remnant CLI from crates.io:
+
+```bash
+cargo install remnant-cli
+```
+
+The crates.io package is named `remnant-cli`; the installed command is `remnant`.
 
 ## Usage
 

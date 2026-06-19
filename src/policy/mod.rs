@@ -8,8 +8,10 @@ use crate::archive::ArchiveEntry;
 use crate::package_json::{PackageDependency, PackageMetadata};
 use std::path::Path;
 
+#[cfg(test)]
 mod rules;
 
+#[cfg(test)]
 pub use rules::{PolicyRule, PolicyRuleRegistrationError, PolicyRuleRegistry};
 
 pub const INSTALL_SCRIPTS_DISALLOWED_RULE_ID: &str = "install-scripts-disallowed";

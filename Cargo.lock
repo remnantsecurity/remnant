@@ -226,7 +226,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "remnant"
+name = "remnant-cli"
 version = "0.1.0"
 dependencies = [
  "clap",

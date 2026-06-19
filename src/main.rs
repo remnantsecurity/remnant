@@ -1,5 +1,10 @@
+mod archive;
+mod commands;
+mod output;
+mod package_json;
+mod policy;
+
 use clap::{Parser, Subcommand};
-use remnant::commands;
 use std::path::PathBuf;
 use std::process;
 
