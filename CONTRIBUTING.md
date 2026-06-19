@@ -44,7 +44,7 @@ For code changes, prefer small focused pull requests over broad rewrites.
 
 ## Development Setup
 
-Remnant is a Rust project. Install the Rust toolchain with `rustup` if needed, then clone the repository and run the local validation commands below.
+Remnant is a Rust workspace. Install the Rust toolchain with `rustup` if needed, then clone the repository and run the local validation commands below. The CLI package lives in `crates/remnant-cli`, and the workspace root is configured so common Cargo commands can run from the repository root.
 
 Common local development commands:
 

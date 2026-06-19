@@ -2,12 +2,12 @@
 
 This directory contains Cargo integration tests that exercise Remnant through public boundaries.
 
-In this project, `tests/` is used for end-to-end CLI behavior because it is Cargo's conventional integration-test directory and is automatically discovered by `cargo test`.
+In this package, `tests/` is used for end-to-end CLI behavior because it is Cargo's conventional integration-test directory and is automatically discovered by `cargo test`.
 
 ## Boundary
 
-- `src/**/tests/` validates internal module behavior through Rust APIs.
-- `tests/` validates user-visible behavior by running the compiled `remnant` binary or other public interfaces.
+- `crates/remnant-cli/src/**/tests/` validates internal module behavior through Rust APIs.
+- `crates/remnant-cli/tests/` validates user-visible behavior by running the compiled `remnant` binary or other public interfaces.
 
 ## Current Coverage
 

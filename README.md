@@ -112,6 +112,8 @@ cargo run -- inspect example.tgz
 cargo run -- inspect --json example.tgz
 ```
 
+The repository is a Cargo workspace. The CLI package lives in `crates/remnant-cli`, while the installed binary remains `remnant`.
+
 ## GitHub Actions
 
 Remnant includes a composite GitHub Action for CI admission checks. The initial public action builds Remnant from the tagged action repository source with Cargo and then runs `remnant inspect`; it does not download npm packages, execute package-controlled code, or use a hosted analysis service.
@@ -160,6 +162,15 @@ This makes Remnant suitable for CI admission workflows where malformed artifacts
 ## Development
 
 Remnant is written in Rust and keeps the CLI entrypoint thin. Parser, archive, package metadata, policy, and output behavior live in focused modules so security-sensitive logic remains reviewable.
+
+Repository layout:
+
+```text
+Cargo.toml                    # workspace root
+crates/remnant-cli/           # crates.io package; installs the remnant binary
+crates/remnant-cli/fixtures/  # inert package fixture source material
+.github/                      # CI workflows and local composite actions
+```
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for development setup, validation commands, DCO sign-off requirements, fixture safety expectations, and contribution guidance.
 
