@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::process;
 
 #[derive(Parser)]
-#[command(name = "remnant")]
+#[command(name = "remnant", version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
