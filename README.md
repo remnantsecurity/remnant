@@ -83,7 +83,13 @@ Policy checks use already-validated archive paths and package metadata. They do 
 
 ## Installation
 
-Remnant can currently be run from source during development. Packaged installation instructions will be added when a distribution artifact exists.
+Install the Remnant CLI from crates.io:
+
+```bash
+cargo install remnant-cli
+```
+
+The crates.io package is named `remnant-cli`; the installed command is `remnant`.
 
 ## Usage
 
@@ -105,6 +111,8 @@ During local development from source:
 cargo run -- inspect example.tgz
 cargo run -- inspect --json example.tgz
 ```
+
+The repository is a Cargo workspace. The CLI package lives in `crates/remnant-cli`, while the installed binary remains `remnant`.
 
 ## GitHub Actions
 
@@ -154,6 +162,15 @@ This makes Remnant suitable for CI admission workflows where malformed artifacts
 ## Development
 
 Remnant is written in Rust and keeps the CLI entrypoint thin. Parser, archive, package metadata, policy, and output behavior live in focused modules so security-sensitive logic remains reviewable.
+
+Repository layout:
+
+```text
+Cargo.toml                    # workspace root
+crates/remnant-cli/           # crates.io package; installs the remnant binary
+crates/remnant-cli/fixtures/  # inert package fixture source material
+.github/                      # CI workflows and local composite actions
+```
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for development setup, validation commands, DCO sign-off requirements, fixture safety expectations, and contribution guidance.
 

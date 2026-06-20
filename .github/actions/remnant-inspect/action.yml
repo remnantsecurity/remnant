@@ -44,7 +44,7 @@ runs:
         remnant_repo="$REMNANT_ACTION_PATH/../../.."
 
         if [ "$REMNANT_JSON" = "true" ]; then
-          cargo +stable run --locked --manifest-path "$remnant_repo/Cargo.toml" -- inspect --json "$REMNANT_ARTIFACT"
+          cargo +stable run --locked --manifest-path "$remnant_repo/crates/remnant-cli/Cargo.toml" -- inspect --json "$REMNANT_ARTIFACT"
         else
-          cargo +stable run --locked --manifest-path "$remnant_repo/Cargo.toml" -- inspect "$REMNANT_ARTIFACT"
+          cargo +stable run --locked --manifest-path "$remnant_repo/crates/remnant-cli/Cargo.toml" -- inspect "$REMNANT_ARTIFACT"
         fi

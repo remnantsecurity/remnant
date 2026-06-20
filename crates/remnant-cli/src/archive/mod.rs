@@ -93,6 +93,7 @@ pub fn inspect_archive(path: &Path) -> Result<ArchiveInspection, ArchiveError> {
 /// still traversed so unsafe entries, duplicate paths, unsupported entry types,
 /// and resource-limit violations are rejected even when `package/package.json`
 /// is found early.
+#[cfg(test)]
 pub fn read_package_json(path: &Path) -> Result<Vec<u8>, ArchiveError> {
     Ok(inspect_archive(path)?.package_json)
 }

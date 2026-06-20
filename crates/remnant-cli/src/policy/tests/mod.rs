@@ -70,8 +70,11 @@ fn policy_rule_registry_orders_rules_deterministically() {
     let rules = registry.rules();
 
     assert_eq!(rules[0].id(), INSTALL_SCRIPTS_RULE_ID);
+    assert_eq!(rules[0].description(), "Deny install scripts");
     assert_eq!(rules[1].id(), LOCAL_DEPENDENCY_SPECIFIER_DISALLOWED_RULE_ID);
+    assert_eq!(rules[1].description(), "Deny local dependency specifiers");
     assert_eq!(rules[2].id(), SUSPICIOUS_FILE_DETECTED_RULE_ID);
+    assert_eq!(rules[2].description(), "Detect suspicious files");
 }
 
 #[test]
