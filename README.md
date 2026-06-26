@@ -169,6 +169,7 @@ Repository layout:
 Cargo.toml                    # workspace root
 crates/remnant-cli/           # crates.io package; installs the remnant binary
 crates/remnant-cli/fixtures/  # inert package fixture source material
+integrations/                 # standalone experimental integrations
 .github/                      # CI workflows and local composite actions
 ```
 
