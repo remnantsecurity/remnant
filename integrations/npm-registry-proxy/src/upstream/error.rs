@@ -10,8 +10,6 @@ pub enum FetchPackumentError {
     RedirectEncountered(StatusCode),
     BodyByteLimitExceeded { limit: usize },
     NonSuccessStatus(StatusCode),
-    ResponseBodyNotValidJson,
-    ResponseBodyRootIsNotObject,
     // Payload may include the upstream URL; must not be forwarded in client-facing responses.
     UpstreamRequestFailed(String),
     // Payload may include the upstream URL; must not be forwarded in client-facing responses.
@@ -44,15 +42,6 @@ impl fmt::Display for FetchPackumentError {
             }
             FetchPackumentError::NonSuccessStatus(status_code) => {
                 write!(formatter, "upstream registry returned status {status_code}")
-            }
-            FetchPackumentError::ResponseBodyNotValidJson => {
-                write!(formatter, "upstream metadata response is not valid JSON")
-            }
-            FetchPackumentError::ResponseBodyRootIsNotObject => {
-                write!(
-                    formatter,
-                    "upstream metadata response JSON root is not an object"
-                )
             }
             FetchPackumentError::UpstreamRequestFailed(message) => {
                 write!(formatter, "upstream metadata request failed: {message}")
