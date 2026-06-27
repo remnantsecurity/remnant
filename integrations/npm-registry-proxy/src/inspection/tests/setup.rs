@@ -44,7 +44,8 @@ pub(super) fn build_fixture_tgz(category: &str, name: &str, package_json: &[u8])
             Cursor::new(package_json),
         )
         .unwrap();
-    archive.finish().unwrap();
+    let encoder = archive.into_inner().unwrap();
+    encoder.finish().unwrap();
 
     artifact_path
 }

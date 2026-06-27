@@ -28,11 +28,7 @@ async fn blocked_policy_outcome_for_suspicious_fixture() {
     let outcome = run_inspection(&artifact_path).await;
 
     assert_eq!(outcome.category, ResponseCategory::BlockedPolicy);
-    assert!(
-        outcome
-            .finding_ids
-            .contains(&String::from("install-scripts-disallowed"))
-    );
+    assert_eq!(outcome.finding_ids, vec!["install-scripts-disallowed"]);
 }
 
 #[tokio::test]
@@ -42,5 +38,16 @@ async fn blocked_parse_outcome_for_malformed_fixture() {
     let outcome = run_inspection(&artifact_path).await;
 
     assert_eq!(outcome.category, ResponseCategory::BlockedParse);
+    assert!(outcome.finding_ids.is_empty());
+}
+
+#[tokio::test]
+async fn error_outcome_for_unreadable_artifact_path() {
+    let artifact_path = committed_malformed_fixture_path("missing-package-json")
+        .with_file_name("does-not-exist.tgz");
+
+    let outcome = run_inspection(&artifact_path).await;
+
+    assert_eq!(outcome.category, ResponseCategory::Error);
     assert!(outcome.finding_ids.is_empty());
 }
