@@ -1,0 +1,46 @@
+mod setup;
+
+use super::*;
+use setup::{build_fixture_tgz, committed_malformed_fixture_path, fixture_package_json};
+
+#[tokio::test]
+async fn admitted_outcome_for_benign_fixture() {
+    let artifact_path = build_fixture_tgz(
+        "benign",
+        "minimal-package",
+        &fixture_package_json("benign", "minimal-package"),
+    );
+
+    let outcome = run_inspection(&artifact_path).await;
+
+    assert_eq!(outcome.category, ResponseCategory::Admitted);
+    assert!(outcome.finding_ids.is_empty());
+}
+
+#[tokio::test]
+async fn blocked_policy_outcome_for_suspicious_fixture() {
+    let artifact_path = build_fixture_tgz(
+        "suspicious",
+        "install-script-postinstall",
+        &fixture_package_json("suspicious", "install-script-postinstall"),
+    );
+
+    let outcome = run_inspection(&artifact_path).await;
+
+    assert_eq!(outcome.category, ResponseCategory::BlockedPolicy);
+    assert!(
+        outcome
+            .finding_ids
+            .contains(&String::from("install-scripts-disallowed"))
+    );
+}
+
+#[tokio::test]
+async fn blocked_parse_outcome_for_malformed_fixture() {
+    let artifact_path = committed_malformed_fixture_path("missing-package-json");
+
+    let outcome = run_inspection(&artifact_path).await;
+
+    assert_eq!(outcome.category, ResponseCategory::BlockedParse);
+    assert!(outcome.finding_ids.is_empty());
+}
