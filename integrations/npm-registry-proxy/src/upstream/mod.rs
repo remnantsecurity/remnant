@@ -7,6 +7,8 @@ use std::env;
 use futures_util::StreamExt;
 use reqwest::{Client, StatusCode, Url};
 
+use crate::package_name::ValidatedPackageName;
+
 pub use error::FetchPackumentError;
 use limits::{MAX_PACKUMENT_BYTES, read_response_body_with_limit};
 use url::{
@@ -48,10 +50,8 @@ impl UpstreamFetcher {
 
     pub async fn fetch_abbreviated_packument(
         &self,
-        package_name: &str,
+        package_name: &ValidatedPackageName,
     ) -> Result<PackumentResponse, FetchPackumentError> {
-        // Callers must validate and bound package_name against npm package name
-        // rules before calling this fetch boundary.
         let url = build_packument_url(&self.upstream_registry, package_name)?;
 
         let fetch_result = tokio::time::timeout(
@@ -90,7 +90,6 @@ async fn fetch_abbreviated_packument_from_url(
 
     let bytes =
         read_response_body_with_limit(response.bytes_stream().boxed(), MAX_PACKUMENT_BYTES).await?;
-    validate_packument_json_object(&bytes)?;
 
     Ok(PackumentResponse { status_code, bytes })
 }
@@ -101,17 +100,6 @@ fn map_request_error(error: reqwest::Error) -> FetchPackumentError {
     } else {
         FetchPackumentError::UpstreamRequestFailed(error.to_string())
     }
-}
-
-fn validate_packument_json_object(bytes: &[u8]) -> Result<(), FetchPackumentError> {
-    let value: serde_json::Value =
-        serde_json::from_slice(bytes).map_err(|_| FetchPackumentError::ResponseBodyNotValidJson)?;
-
-    if !value.is_object() {
-        return Err(FetchPackumentError::ResponseBodyRootIsNotObject);
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]

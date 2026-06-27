@@ -2,6 +2,8 @@ use std::time::Duration;
 
 use reqwest::Url;
 
+use crate::package_name::ValidatedPackageName;
+
 use super::FetchPackumentError;
 
 pub(super) const DEFAULT_UPSTREAM_REGISTRY: &str = "https://registry.npmjs.org";
@@ -16,7 +18,7 @@ pub(super) fn parse_upstream_registry(upstream_registry: &str) -> Result<Url, Fe
 
 pub(super) fn build_packument_url(
     upstream_registry: &Url,
-    package_name: &str,
+    package_name: &ValidatedPackageName,
 ) -> Result<Url, FetchPackumentError> {
     let mut url = upstream_registry.clone();
     {
@@ -24,9 +26,10 @@ pub(super) fn build_packument_url(
             FetchPackumentError::InvalidUpstreamRegistry(upstream_registry.to_string())
         })?;
 
-        path_segments
-            .pop_if_empty()
-            .push(package_name.trim_start_matches('/'));
+        // ValidatedPackageName guarantees URL-safe characters with no leading slashes,
+        // so push() encodes only the '/' in scoped names (@scope/name → @scope%2Fname).
+        // No defensive trimming or normalization is needed here.
+        path_segments.pop_if_empty().push(package_name.as_str());
     }
 
     Ok(url)

@@ -27,12 +27,16 @@ Current implemented scope:
 - request npm's install-v1 packument representation;
 - reject redirects instead of following them;
 - enforce connection, total fetch, and response body byte limits;
-- validate that the response body is a JSON object.
+- return bounded upstream response bytes without deserializing JSON in the fetcher;
+- validate and rewrite packument JSON in the artifact identity layer;
+- compute opaque SHA-256 artifact keys for bounded package/version/tarball URL tuples;
+- rewrite packument tarball URLs to Remnant-owned `/remnant/tarballs/<key>.tgz` routes;
+- preserve in-memory artifact key mappings for future tarball requests;
+- classify strict SHA-512 SRI integrity as verified, mismatch, absent, or unsupported.
 
 Out of scope for this step:
 
 - HTTP server behavior;
-- metadata URL rewriting;
 - tarball fetching;
 - invoking `remnant inspect`;
 - package admission or blocking responses.
