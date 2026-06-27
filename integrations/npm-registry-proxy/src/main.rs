@@ -1,4 +1,6 @@
+mod admission;
 mod artifact;
+mod inspection;
 mod output;
 mod package_name;
 mod upstream;
