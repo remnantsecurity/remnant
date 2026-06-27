@@ -445,6 +445,13 @@ fn reports_unsupported_integrity_for_malformed_sha512_sri() {
 }
 
 #[test]
+fn reports_unsupported_integrity_for_sha512_sri_with_embedded_whitespace() {
+    let status = verify_sha512_integrity(Some("sha512-abc def"), b"artifact bytes");
+
+    assert_eq!(status, IntegrityStatus::Unsupported);
+}
+
+#[test]
 fn reports_unsupported_integrity_for_wrong_sha512_digest_length() {
     let digest = STANDARD.encode([0_u8; 32]);
     let integrity = format!("sha512-{digest}");
