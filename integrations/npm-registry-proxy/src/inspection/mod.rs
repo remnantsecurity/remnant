@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::path::Path;
 use std::process::Output;
 use std::time::Duration;
@@ -5,28 +6,10 @@ use std::time::Duration;
 use serde_json::Value;
 use tokio::process::Command;
 
+use crate::admission::{InspectionOutcome, ResponseCategory};
+
 const REMNANT_BINARY: &str = "remnant";
 const INSPECTION_TIMEOUT: Duration = Duration::from_secs(30);
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum ResponseCategory {
-    Admitted,
-    BlockedPolicy,
-    BlockedParse,
-    Error,
-}
-
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Step 3 defines the inspection outcome; Step 4 will read it from request handling"
-    )
-)]
-pub struct InspectionOutcome {
-    pub category: ResponseCategory,
-    pub finding_ids: Vec<String>,
-}
 
 #[cfg_attr(
     not(test),
@@ -36,8 +19,21 @@ pub struct InspectionOutcome {
     )
 )]
 pub async fn run_inspection(artifact_path: &Path) -> InspectionOutcome {
+    run_inspection_with(
+        artifact_path,
+        OsStr::new(REMNANT_BINARY),
+        INSPECTION_TIMEOUT,
+    )
+    .await
+}
+
+async fn run_inspection_with(
+    artifact_path: &Path,
+    binary: &OsStr,
+    timeout: Duration,
+) -> InspectionOutcome {
     let inspection =
-        tokio::time::timeout(INSPECTION_TIMEOUT, invoke_remnant_inspect(artifact_path)).await;
+        tokio::time::timeout(timeout, invoke_remnant_inspect(artifact_path, binary)).await;
 
     match inspection {
         Ok(Ok(output)) => map_inspection_output(output),
@@ -45,11 +41,12 @@ pub async fn run_inspection(artifact_path: &Path) -> InspectionOutcome {
     }
 }
 
-async fn invoke_remnant_inspect(artifact_path: &Path) -> std::io::Result<Output> {
-    Command::new(REMNANT_BINARY)
+async fn invoke_remnant_inspect(artifact_path: &Path, binary: &OsStr) -> std::io::Result<Output> {
+    Command::new(binary)
         .arg("inspect")
         .arg("--json")
         .arg(artifact_path)
+        .kill_on_drop(true)
         .output()
         .await
 }

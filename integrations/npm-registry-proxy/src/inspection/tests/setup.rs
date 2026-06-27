@@ -18,10 +18,7 @@ pub(super) fn fixture_package_json(category: &str, name: &str) -> Vec<u8> {
 }
 
 pub(super) fn build_fixture_tgz(category: &str, name: &str, package_json: &[u8]) -> PathBuf {
-    let output_directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join("remnant-tests")
-        .join("inspection");
+    let output_directory = inspection_output_directory();
     fs::create_dir_all(&output_directory).unwrap();
 
     let artifact_path = output_directory.join(format!("{category}-{name}.tgz"));
@@ -50,6 +47,23 @@ pub(super) fn build_fixture_tgz(category: &str, name: &str, package_json: &[u8])
     artifact_path
 }
 
+#[cfg(unix)]
+pub(super) fn sleeping_binary_path() -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let output_directory = inspection_output_directory();
+    fs::create_dir_all(&output_directory).unwrap();
+
+    let binary_path = output_directory.join("sleeping-remnant.sh");
+    fs::write(&binary_path, "#!/bin/sh\nsleep 60\n").unwrap();
+
+    let mut permissions = fs::metadata(&binary_path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&binary_path, permissions).unwrap();
+
+    binary_path
+}
+
 pub(super) fn committed_malformed_fixture_path(name: &str) -> PathBuf {
     fixture_root()
         .join("malformed")
@@ -64,4 +78,11 @@ fn fixture_root() -> PathBuf {
         .join("crates")
         .join("remnant-cli")
         .join("fixtures")
+}
+
+fn inspection_output_directory() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join("remnant-tests")
+        .join("inspection")
 }

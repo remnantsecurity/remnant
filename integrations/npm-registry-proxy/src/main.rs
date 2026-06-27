@@ -1,3 +1,4 @@
+mod admission;
 mod artifact;
 mod inspection;
 mod output;
