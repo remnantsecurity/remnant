@@ -49,6 +49,7 @@ pub enum PackumentRewriteError {
     TooManyDistTags { limit: usize },
     VersionStringIsEmpty,
     VersionStringTooLong { limit: usize },
+    VersionStringHasUnsupportedCharacter,
     VersionEntryIsNotObject,
     DistIsNotObject,
     TarballUrlMissing,
@@ -93,6 +94,9 @@ impl fmt::Display for PackumentRewriteError {
             PackumentRewriteError::VersionStringIsEmpty => write!(formatter, "version is empty"),
             PackumentRewriteError::VersionStringTooLong { limit } => {
                 write!(formatter, "version exceeds {limit} byte limit")
+            }
+            PackumentRewriteError::VersionStringHasUnsupportedCharacter => {
+                write!(formatter, "version contains an unsupported character")
             }
             PackumentRewriteError::VersionEntryIsNotObject => {
                 write!(formatter, "version entry is not an object")
@@ -269,7 +273,15 @@ fn validate_version_string(version: &str) -> Result<(), PackumentRewriteError> {
         });
     }
 
+    if !version.bytes().all(is_supported_version_byte) {
+        return Err(PackumentRewriteError::VersionStringHasUnsupportedCharacter);
+    }
+
     Ok(())
+}
+
+fn is_supported_version_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'+')
 }
 
 fn validated_tarball_url(

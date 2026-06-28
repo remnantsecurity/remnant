@@ -237,6 +237,45 @@ fn rejects_over_limit_version_string() {
 }
 
 #[test]
+fn rejects_version_string_with_unsupported_character() {
+    let error = rewrite_error(serde_json::json!({
+        "name": "pkg",
+        "versions": {
+            "1.0.0/evil": {
+                "dist": {
+                    "tarball": "https://registry.npmjs.org/pkg/-/pkg-1.0.0.tgz"
+                }
+            }
+        }
+    }));
+
+    assert_eq!(
+        error,
+        PackumentRewriteError::VersionStringHasUnsupportedCharacter
+    );
+}
+
+#[test]
+fn accepts_version_string_with_prerelease_and_build_metadata() {
+    let rewritten = rewrite_packument_tarball_urls(
+        br#"{
+            "name": "pkg",
+            "versions": {
+                "1.0.0-alpha.1+build.5": {
+                    "dist": {
+                        "tarball": "https://registry.npmjs.org/pkg/-/pkg-1.0.0-alpha.1.tgz"
+                    }
+                }
+            }
+        }"#,
+        "http://localhost:4873",
+    )
+    .unwrap();
+
+    assert_eq!(rewritten.artifacts.len(), 1);
+}
+
+#[test]
 fn rejects_version_entry_that_is_not_object() {
     let error = rewrite_error(serde_json::json!({
         "name": "pkg",
