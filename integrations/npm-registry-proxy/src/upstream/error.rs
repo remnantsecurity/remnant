@@ -5,6 +5,7 @@ use reqwest::StatusCode;
 #[derive(Debug, PartialEq, Eq)]
 pub enum FetchPackumentError {
     InvalidUpstreamRegistry(String),
+    UpstreamRegistrySchemeNotHttps,
     ConnectionTimeout,
     TotalFetchTimeout,
     RedirectEncountered(StatusCode),
@@ -21,6 +22,9 @@ impl fmt::Display for FetchPackumentError {
         match self {
             FetchPackumentError::InvalidUpstreamRegistry(registry) => {
                 write!(formatter, "upstream registry URL is invalid: {registry}")
+            }
+            FetchPackumentError::UpstreamRegistrySchemeNotHttps => {
+                write!(formatter, "upstream registry URL scheme is not https")
             }
             FetchPackumentError::ConnectionTimeout => {
                 write!(formatter, "timed out connecting to upstream registry")

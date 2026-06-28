@@ -12,8 +12,14 @@ pub(super) const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 pub(super) const TOTAL_FETCH_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(super) fn parse_upstream_registry(upstream_registry: &str) -> Result<Url, FetchPackumentError> {
-    Url::parse(upstream_registry)
-        .map_err(|_| FetchPackumentError::InvalidUpstreamRegistry(upstream_registry.to_string()))
+    let upstream_registry = Url::parse(upstream_registry)
+        .map_err(|_| FetchPackumentError::InvalidUpstreamRegistry(upstream_registry.to_string()))?;
+
+    if upstream_registry.scheme() != "https" {
+        return Err(FetchPackumentError::UpstreamRegistrySchemeNotHttps);
+    }
+
+    Ok(upstream_registry)
 }
 
 pub(super) fn build_packument_url(
