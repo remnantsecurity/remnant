@@ -48,6 +48,24 @@ impl UpstreamFetcher {
         })
     }
 
+    #[cfg(test)]
+    fn new_with_danger_certs_for_testing(
+        upstream_registry: &str,
+    ) -> Result<Self, FetchPackumentError> {
+        let upstream_registry = parse_upstream_registry(upstream_registry)?;
+        let client = Client::builder()
+            .danger_accept_invalid_certs(true)
+            .connect_timeout(CONNECT_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|error| FetchPackumentError::UpstreamRequestFailed(error.to_string()))?;
+
+        Ok(Self {
+            upstream_registry,
+            client,
+        })
+    }
+
     pub async fn fetch_abbreviated_packument(
         &self,
         package_name: &ValidatedPackageName,

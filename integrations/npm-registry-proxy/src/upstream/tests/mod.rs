@@ -1,7 +1,12 @@
+use std::sync::Arc;
+
 use futures_util::{StreamExt, stream};
 use reqwest::Url;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio_rustls::TlsAcceptor;
+use tokio_rustls::rustls::ServerConfig;
+use tokio_rustls::rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 
 use super::*;
 use crate::package_name::ValidatedPackageName;
@@ -38,14 +43,12 @@ async fn accepts_body_at_exact_byte_limit() {
 #[tokio::test]
 async fn fetches_abbreviated_packument_round_trip() {
     let response_body = br#"{"name":"left-pad","versions":{}}"#;
-    let (upstream_registry, server_task) = spawn_packument_server(response_body).await;
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .unwrap();
-    let url = Url::parse(&format!("{upstream_registry}/left-pad")).unwrap();
+    let (upstream_registry, server_task) = spawn_https_packument_server(response_body).await;
+    let fetcher = UpstreamFetcher::new_with_danger_certs_for_testing(&upstream_registry).unwrap();
+    let package_name = ValidatedPackageName::parse(String::from("left-pad")).unwrap();
 
-    let response = fetch_abbreviated_packument_from_url(&client, url)
+    let response = fetcher
+        .fetch_abbreviated_packument(&package_name)
         .await
         .unwrap();
     let request = server_task.await.unwrap();
@@ -92,14 +95,29 @@ fn preserves_configured_upstream_registry_path_prefix() {
     assert_eq!(url.as_str(), "https://registry.example.test/npm/left-pad");
 }
 
-async fn spawn_packument_server(
+async fn spawn_https_packument_server(
     response_body: &'static [u8],
 ) -> (String, tokio::task::JoinHandle<String>) {
+    let certificate = rcgen::generate_simple_self_signed(vec![String::from("localhost")]).unwrap();
+    let certificate_der = certificate.cert.der().clone();
+    let private_key_der = certificate.key_pair.serialize_der();
+    let server_config = ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(
+            vec![certificate_der],
+            PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(private_key_der)),
+        )
+        .unwrap();
+    let tls_acceptor = TlsAcceptor::from(Arc::new(server_config));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let upstream_registry = format!("http://{}", listener.local_addr().unwrap());
+    let upstream_registry = format!(
+        "https://localhost:{}",
+        listener.local_addr().unwrap().port()
+    );
 
     let server_task = tokio::spawn(async move {
         let (mut socket, _) = listener.accept().await.unwrap();
+        let mut socket = tls_acceptor.accept(&mut socket).await.unwrap();
         let mut request_bytes = Vec::new();
         let mut buffer = [0_u8; 1024];
 
