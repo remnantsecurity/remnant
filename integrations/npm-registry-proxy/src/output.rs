@@ -1,6 +1,13 @@
 //! Terminal output escaping for attacker-influenced upstream response bytes.
 
 // The proxy logs bounded raw upstream bytes, so escaping happens before UTF-8 decoding.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Step 6 will use it for escaping upstream data in server-side output"
+    )
+)]
 pub fn escape_for_terminal(bytes: &[u8]) -> String {
     let mut escaped = String::new();
 
