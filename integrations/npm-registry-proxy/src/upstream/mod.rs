@@ -35,15 +35,26 @@ impl UpstreamFetcher {
     }
 
     pub fn new(upstream_registry: &str) -> Result<Self, FetchPackumentError> {
-        Self::new_with_client_builder(upstream_registry, Client::builder())
+        let upstream_registry = parse_upstream_registry(upstream_registry)?;
+        let client = Client::builder()
+            .connect_timeout(CONNECT_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|error| FetchPackumentError::UpstreamRequestFailed(error.to_string()))?;
+
+        Ok(Self {
+            upstream_registry,
+            client,
+        })
     }
 
-    fn new_with_client_builder(
+    #[cfg(test)]
+    fn new_with_danger_certs_for_testing(
         upstream_registry: &str,
-        client_builder: reqwest::ClientBuilder,
     ) -> Result<Self, FetchPackumentError> {
         let upstream_registry = parse_upstream_registry(upstream_registry)?;
-        let client = client_builder
+        let client = Client::builder()
+            .danger_accept_invalid_certs(true)
             .connect_timeout(CONNECT_TIMEOUT)
             .redirect(reqwest::redirect::Policy::none())
             .build()
