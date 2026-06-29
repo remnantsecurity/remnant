@@ -4,6 +4,10 @@
 //! paths, script names, or user-provided filesystem paths. Keep escaping small,
 //! deterministic, and centralized so human-readable output does not emit raw
 //! control characters.
+//!
+//! The npm registry proxy uses a separate byte-level escaping helper for
+//! bounded raw upstream bytes that have not been decoded as UTF-8; see
+//! `integrations/npm-registry-proxy/src/output.rs`.
 
 use std::path::Path;
 
