@@ -129,14 +129,11 @@ pub fn evaluate_install_script_policy(metadata: &PackageMetadata) -> PolicyResul
         return PolicyResult::passed();
     }
 
-    let mut install_hooks = metadata.install_hooks.clone();
-    install_hooks.sort();
-
     PolicyResult::from_findings(vec![PolicyFinding::new(
         INSTALL_SCRIPTS_DISALLOWED_RULE_ID,
         format!(
             "package declares install hooks: {}",
-            install_hooks.join(", ")
+            metadata.install_hooks.join(", ")
         ),
     )])
 }

@@ -154,10 +154,18 @@ fn install_script_policy_fails_for_install_script_fixture() {
 
 #[test]
 fn install_script_policy_orders_reported_hooks_deterministically() {
-    let metadata = package_metadata_with_scripts(
-        &["prepare", "install", "postinstall"],
-        &["prepare", "postinstall", "install"],
-    );
+    let metadata = parse_package_json(
+        br#"{
+            "name": "install-hook-order",
+            "version": "1.0.0",
+            "scripts": {
+                "prepare": "node prepare.js",
+                "postinstall": "node postinstall.js",
+                "install": "node install.js"
+            }
+        }"#,
+    )
+    .expect("fixture package metadata should parse");
 
     let result = evaluate_install_script_policy(&metadata);
 
