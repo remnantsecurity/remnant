@@ -39,11 +39,13 @@ async fn accepts_body_at_exact_byte_limit() {
 async fn fetches_abbreviated_packument_round_trip() {
     let response_body = br#"{"name":"left-pad","versions":{}}"#;
     let (upstream_registry, server_task) = spawn_packument_server(response_body).await;
-    let fetcher = UpstreamFetcher::new(&upstream_registry).unwrap();
-    let package_name = ValidatedPackageName::parse(String::from("left-pad")).unwrap();
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let url = Url::parse(&format!("{upstream_registry}/left-pad")).unwrap();
 
-    let response = fetcher
-        .fetch_abbreviated_packument(&package_name)
+    let response = fetch_abbreviated_packument_from_url(&client, url)
         .await
         .unwrap();
     let request = server_task.await.unwrap();
@@ -52,6 +54,22 @@ async fn fetches_abbreviated_packument_round_trip() {
     assert_eq!(response.bytes, response_body);
     assert!(request.starts_with("GET /left-pad HTTP/1.1\r\n"));
     assert!(request.contains("accept: application/vnd.npm.install-v1+json\r\n"));
+}
+
+#[test]
+fn accepts_https_upstream_registry_url() {
+    let upstream_registry = parse_upstream_registry("https://registry.npmjs.org").unwrap();
+
+    assert_eq!(upstream_registry.as_str(), "https://registry.npmjs.org/");
+}
+
+#[test]
+fn rejects_http_upstream_registry_url() {
+    let error = parse_upstream_registry("http://registry.npmjs.org")
+        .err()
+        .unwrap();
+
+    assert_eq!(error, FetchPackumentError::UpstreamRegistrySchemeNotHttps);
 }
 
 #[test]
