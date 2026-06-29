@@ -219,10 +219,13 @@ fn collect_local_dependency_references(
 }
 
 fn suspicious_file_path(path: &Path) -> Option<String> {
-    let path = path.to_string_lossy();
+    // Accepted archive entry paths are normalized only after UTF-8 validation.
+    let path = path
+        .to_str()
+        .expect("validated archive entry paths must be UTF-8");
 
-    if SUSPICIOUS_FILE_PATHS.contains(&path.as_ref()) {
-        return Some(path.into_owned());
+    if SUSPICIOUS_FILE_PATHS.contains(&path) {
+        return Some(path.to_string());
     }
 
     None
