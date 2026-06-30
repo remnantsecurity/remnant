@@ -15,7 +15,7 @@ const INSPECTION_TIMEOUT: Duration = Duration::from_secs(30);
     not(test),
     expect(
         dead_code,
-        reason = "Step 3 defines the inspection boundary; Step 4 will call it from request handling"
+        reason = "Step 3 defines the inspection boundary; Step 5 will call it from tarball request handling"
     )
 )]
 pub async fn run_inspection(artifact_path: &Path) -> InspectionOutcome {

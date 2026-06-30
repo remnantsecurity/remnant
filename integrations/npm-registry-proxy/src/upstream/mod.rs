@@ -49,7 +49,7 @@ impl UpstreamFetcher {
     }
 
     #[cfg(test)]
-    fn new_with_danger_certs_for_testing(
+    pub(crate) fn new_with_danger_certs_for_testing(
         upstream_registry: &str,
     ) -> Result<Self, FetchPackumentError> {
         let upstream_registry = parse_upstream_registry(upstream_registry)?;
