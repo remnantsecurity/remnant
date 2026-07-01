@@ -9,8 +9,10 @@ use reqwest::{Client, StatusCode, Url};
 
 use crate::package_name::ValidatedPackageName;
 
-pub use error::FetchPackumentError;
-use limits::{MAX_PACKUMENT_BYTES, read_response_body_with_limit};
+pub use error::{FetchPackumentError, FetchTarballError};
+use limits::{
+    MAX_PACKUMENT_BYTES, MAX_TARBALL_BYTES, TARBALL_FETCH_TIMEOUT, read_response_body_with_limit,
+};
 use url::{
     CONNECT_TIMEOUT, DEFAULT_UPSTREAM_REGISTRY, INSTALL_V1_ACCEPT, TOTAL_FETCH_TIMEOUT,
     build_packument_url, parse_upstream_registry,
@@ -83,6 +85,21 @@ impl UpstreamFetcher {
             Err(_) => Err(FetchPackumentError::TotalFetchTimeout),
         }
     }
+
+    pub async fn fetch_tarball_bytes(&self, url: &str) -> Result<Vec<u8>, FetchTarballError> {
+        let url = Url::parse(url).map_err(|_| FetchTarballError::TarballUrlInvalid)?;
+
+        let fetch_result = tokio::time::timeout(
+            TARBALL_FETCH_TIMEOUT,
+            fetch_tarball_bytes_from_url(&self.client, url),
+        )
+        .await;
+
+        match fetch_result {
+            Ok(result) => result,
+            Err(_) => Err(FetchTarballError::TotalFetchTimeout),
+        }
+    }
 }
 
 async fn fetch_abbreviated_packument_from_url(
@@ -117,6 +134,47 @@ fn map_request_error(error: reqwest::Error) -> FetchPackumentError {
         FetchPackumentError::ConnectionTimeout
     } else {
         FetchPackumentError::UpstreamRequestFailed(error.to_string())
+    }
+}
+
+async fn fetch_tarball_bytes_from_url(
+    client: &Client,
+    url: Url,
+) -> Result<Vec<u8>, FetchTarballError> {
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(map_tarball_request_error)?;
+
+    let status_code = response.status();
+
+    if status_code != StatusCode::OK {
+        return Err(FetchTarballError::NonSuccessStatus(status_code));
+    }
+
+    read_response_body_with_limit(response.bytes_stream().boxed(), MAX_TARBALL_BYTES)
+        .await
+        .map_err(map_tarball_body_error)
+}
+
+fn map_tarball_request_error(error: reqwest::Error) -> FetchTarballError {
+    if error.is_timeout() {
+        FetchTarballError::ConnectionTimeout
+    } else {
+        FetchTarballError::RequestFailed(error.to_string())
+    }
+}
+
+fn map_tarball_body_error(error: FetchPackumentError) -> FetchTarballError {
+    match error {
+        FetchPackumentError::BodyByteLimitExceeded { limit } => {
+            FetchTarballError::BodyByteLimitExceeded { limit }
+        }
+        FetchPackumentError::ResponseBodyReadFailed(message) => {
+            FetchTarballError::ResponseBodyReadFailed(message)
+        }
+        _ => FetchTarballError::ResponseBodyReadFailed(error.to_string()),
     }
 }
 

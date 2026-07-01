@@ -61,3 +61,52 @@ impl fmt::Display for FetchPackumentError {
 }
 
 impl std::error::Error for FetchPackumentError {}
+
+#[derive(Debug)]
+pub enum FetchTarballError {
+    TarballUrlInvalid,
+    ConnectionTimeout,
+    TotalFetchTimeout,
+    BodyByteLimitExceeded { limit: usize },
+    NonSuccessStatus(StatusCode),
+    // Payload may include the upstream URL; must not be forwarded in client-facing responses.
+    RequestFailed(String),
+    // Payload may include the upstream URL; must not be forwarded in client-facing responses.
+    ResponseBodyReadFailed(String),
+}
+
+impl fmt::Display for FetchTarballError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FetchTarballError::TarballUrlInvalid => {
+                write!(formatter, "upstream tarball URL is invalid")
+            }
+            FetchTarballError::ConnectionTimeout => {
+                write!(formatter, "timed out connecting to upstream tarball")
+            }
+            FetchTarballError::TotalFetchTimeout => {
+                write!(formatter, "timed out fetching upstream tarball")
+            }
+            FetchTarballError::BodyByteLimitExceeded { limit } => {
+                write!(
+                    formatter,
+                    "upstream tarball response exceeded {limit} byte limit"
+                )
+            }
+            FetchTarballError::NonSuccessStatus(status_code) => {
+                write!(formatter, "upstream tarball returned status {status_code}")
+            }
+            FetchTarballError::RequestFailed(message) => {
+                write!(formatter, "upstream tarball request failed: {message}")
+            }
+            FetchTarballError::ResponseBodyReadFailed(message) => {
+                write!(
+                    formatter,
+                    "upstream tarball response read failed: {message}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for FetchTarballError {}

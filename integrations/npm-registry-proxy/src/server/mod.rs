@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -13,11 +14,15 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::admission::ResponseCategory;
-use crate::artifact::{ArtifactMapping, rewrite_packument_tarball_urls};
+use crate::artifact::{
+    ArtifactMapping, IntegrityStatus, rewrite_packument_tarball_urls, verify_sha512_integrity,
+};
+use crate::inspection::run_inspection;
 use crate::package_name::ValidatedPackageName;
 use crate::upstream::UpstreamFetcher;
 
 const ARTIFACT_KEY_HEX_LENGTH: usize = 64;
+const MAX_BLOCK_RESPONSE_BYTES: usize = 2 * 1024;
 
 #[derive(Clone)]
 pub(crate) struct AppState {
@@ -43,6 +48,16 @@ pub(crate) fn build_router(state: AppState) -> Router {
         .with_state(state)
 }
 
+struct TempFile {
+    path: PathBuf,
+}
+
+impl Drop for TempFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 async fn handle_metadata_request(
     State(state): State<AppState>,
     Path(raw_package): Path<String>,
@@ -53,6 +68,7 @@ async fn handle_metadata_request(
             return build_block_response(
                 ResponseCategory::BlockedParse,
                 "package name is not valid",
+                vec![],
             );
         }
     };
@@ -67,6 +83,7 @@ async fn handle_metadata_request(
             return build_block_response(
                 ResponseCategory::BlockedFetch,
                 "upstream registry fetch failed",
+                vec![],
             );
         }
     };
@@ -79,6 +96,7 @@ async fn handle_metadata_request(
             return build_block_response(
                 ResponseCategory::BlockedParse,
                 "package metadata could not be parsed",
+                vec![],
             );
         }
     };
@@ -99,14 +117,85 @@ async fn handle_tarball_request(
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    let artifact_mapping = state.artifact_mapping.read().await;
+    let Some(mapping) = state
+        .artifact_mapping
+        .read()
+        .await
+        .get(artifact_key)
+        .cloned()
+    else {
+        return Json(json!({ "error": "artifact key is not known to this instance" }))
+            .into_response_with_status(StatusCode::NOT_FOUND);
+    };
 
-    if artifact_mapping.contains_key(artifact_key) {
-        Json(json!({ "error": "tarball delivery not yet implemented" }))
-            .into_response_with_status(StatusCode::NOT_IMPLEMENTED)
-    } else {
-        Json(json!({ "error": "artifact key is not known to this instance" }))
-            .into_response_with_status(StatusCode::NOT_FOUND)
+    let tarball_bytes = match state
+        .fetcher
+        .fetch_tarball_bytes(&mapping.upstream_url)
+        .await
+    {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return build_block_response(
+                ResponseCategory::BlockedFetch,
+                "upstream tarball fetch failed",
+                vec![],
+            );
+        }
+    };
+
+    match verify_sha512_integrity(mapping.integrity.as_deref(), &tarball_bytes) {
+        IntegrityStatus::Verified => {}
+        _ => {
+            return build_block_response(
+                ResponseCategory::BlockedIntegrity,
+                "artifact integrity verification failed",
+                vec![],
+            );
+        }
+    }
+
+    let temp_path = std::env::temp_dir().join(format!("remnant-{}.tgz", Uuid::new_v4()));
+    let _temp_file = TempFile {
+        path: temp_path.clone(),
+    };
+
+    if tokio::fs::write(&temp_path, &tarball_bytes).await.is_err() {
+        return build_block_response(
+            ResponseCategory::Error,
+            "artifact could not be written for inspection",
+            vec![],
+        );
+    }
+
+    let outcome = run_inspection(&temp_path).await;
+
+    match outcome.category {
+        ResponseCategory::Admitted => {
+            let mut response = Response::new(Body::from(tarball_bytes));
+            *response.status_mut() = StatusCode::OK;
+            response.headers_mut().insert(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/octet-stream"),
+            );
+            response
+        }
+        ResponseCategory::BlockedPolicy => build_block_response(
+            ResponseCategory::BlockedPolicy,
+            "artifact failed policy checks",
+            outcome.finding_ids,
+        ),
+        ResponseCategory::BlockedParse => build_block_response(
+            ResponseCategory::BlockedParse,
+            "artifact could not be inspected",
+            vec![],
+        ),
+        ResponseCategory::BlockedFetch
+        | ResponseCategory::BlockedIntegrity
+        | ResponseCategory::Error => build_block_response(
+            ResponseCategory::Error,
+            "artifact inspection failed",
+            vec![],
+        ),
     }
 }
 
@@ -124,15 +213,60 @@ fn valid_artifact_key_from_filename(filename: &str) -> Option<&str> {
     }
 }
 
-fn build_block_response(category: ResponseCategory, error: &'static str) -> Response<Body> {
+fn build_block_response(
+    category: ResponseCategory,
+    error: &'static str,
+    finding_ids: Vec<String>,
+) -> Response<Body> {
+    let request_id = Uuid::new_v4().to_string();
+    let finding_ids =
+        finding_ids_within_block_response_limit(&category, error, &request_id, finding_ids);
     let body = Json(json!({
         "error": error,
         "category": response_category_name(&category),
-        "findingIds": [],
-        "requestId": Uuid::new_v4().to_string(),
+        "findingIds": finding_ids,
+        "requestId": request_id,
     }));
 
     body.into_response_with_status(response_category_status(&category))
+}
+
+fn finding_ids_within_block_response_limit(
+    category: &ResponseCategory,
+    error: &'static str,
+    request_id: &str,
+    finding_ids: Vec<String>,
+) -> Vec<String> {
+    let mut capped_finding_ids = Vec::new();
+
+    for finding_id in finding_ids {
+        capped_finding_ids.push(finding_id);
+
+        if block_response_body_len(category, error, request_id, &capped_finding_ids)
+            > MAX_BLOCK_RESPONSE_BYTES
+        {
+            capped_finding_ids.pop();
+            break;
+        }
+    }
+
+    capped_finding_ids
+}
+
+fn block_response_body_len(
+    category: &ResponseCategory,
+    error: &'static str,
+    request_id: &str,
+    finding_ids: &[String],
+) -> usize {
+    serde_json::to_vec(&json!({
+        "error": error,
+        "category": response_category_name(category),
+        "findingIds": finding_ids,
+        "requestId": request_id,
+    }))
+    .expect("block response JSON serialization should not fail")
+    .len()
 }
 
 fn response_category_status(category: &ResponseCategory) -> StatusCode {

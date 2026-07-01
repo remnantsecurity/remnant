@@ -1,8 +1,11 @@
 use futures_util::{StreamExt, stream::BoxStream};
+use std::time::Duration;
 
 use super::FetchPackumentError;
 
 pub(super) const MAX_PACKUMENT_BYTES: usize = 32 * 1024 * 1024;
+pub(super) const MAX_TARBALL_BYTES: usize = 512 * 1024 * 1024;
+pub(super) const TARBALL_FETCH_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub(super) async fn read_response_body_with_limit(
     mut body_stream: BoxStream<'static, Result<bytes::Bytes, reqwest::Error>>,

@@ -195,13 +195,6 @@ pub fn rewrite_packument_tarball_urls(
     Ok(RewrittenPackument { bytes, artifacts })
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Step 2 defines integrity verification; Step 5 will call it before inspection"
-    )
-)]
 pub fn verify_sha512_integrity(integrity: Option<&str>, artifact_bytes: &[u8]) -> IntegrityStatus {
     let Some(integrity) = integrity else {
         return IntegrityStatus::Absent;
