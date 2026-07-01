@@ -225,6 +225,10 @@ pub fn verify_sha512_integrity(integrity: Option<&str>, artifact_bytes: &[u8]) -
     }
 }
 
+pub fn compute_sha512_hex(bytes: &[u8]) -> String {
+    lowercase_hex(&Sha512::digest(bytes))
+}
+
 fn validated_packument_package_name(
     root: &Map<String, Value>,
 ) -> Result<ValidatedPackageName, PackumentRewriteError> {

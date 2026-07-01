@@ -15,8 +15,10 @@ use uuid::Uuid;
 
 use crate::admission::ResponseCategory;
 use crate::artifact::{
-    ArtifactMapping, IntegrityStatus, rewrite_packument_tarball_urls, verify_sha512_integrity,
+    ArtifactMapping, IntegrityStatus, compute_sha512_hex, rewrite_packument_tarball_urls,
+    verify_sha512_integrity,
 };
+use crate::audit::{AuditRecord, write_audit_record};
 use crate::inspection::run_inspection;
 use crate::package_name::ValidatedPackageName;
 use crate::upstream::UpstreamFetcher;
@@ -29,14 +31,20 @@ pub(crate) struct AppState {
     fetcher: Arc<UpstreamFetcher>,
     artifact_mapping: Arc<RwLock<HashMap<String, ArtifactMapping>>>,
     proxy_origin: String,
+    remnant_version: String,
 }
 
 impl AppState {
-    pub(crate) fn new(fetcher: UpstreamFetcher, proxy_origin: impl Into<String>) -> Self {
+    pub(crate) fn new(
+        fetcher: UpstreamFetcher,
+        proxy_origin: impl Into<String>,
+        remnant_version: impl Into<String>,
+    ) -> Self {
         Self {
             fetcher: Arc::new(fetcher),
             artifact_mapping: Arc::new(RwLock::new(HashMap::new())),
             proxy_origin: proxy_origin.into(),
+            remnant_version: remnant_version.into(),
         }
     }
 }
@@ -62,10 +70,13 @@ async fn handle_metadata_request(
     State(state): State<AppState>,
     Path(raw_package): Path<String>,
 ) -> Response<Body> {
+    let request_id = Uuid::new_v4().to_string();
+
     let package_name = match ValidatedPackageName::parse(raw_package) {
         Ok(package_name) => package_name,
         Err(_) => {
             return build_block_response(
+                &request_id,
                 ResponseCategory::BlockedParse,
                 "package name is not valid",
                 vec![],
@@ -81,6 +92,7 @@ async fn handle_metadata_request(
         Ok(response) => response,
         Err(_) => {
             return build_block_response(
+                &request_id,
                 ResponseCategory::BlockedFetch,
                 "upstream registry fetch failed",
                 vec![],
@@ -94,6 +106,7 @@ async fn handle_metadata_request(
         Ok(rewritten) => rewritten,
         Err(_) => {
             return build_block_response(
+                &request_id,
                 ResponseCategory::BlockedParse,
                 "package metadata could not be parsed",
                 vec![],
@@ -113,6 +126,10 @@ async fn handle_tarball_request(
     State(state): State<AppState>,
     Path(filename): Path<String>,
 ) -> Response<Body> {
+    let request_id = Uuid::new_v4().to_string();
+    let request_start = std::time::Instant::now();
+    let timestamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
     let Some(artifact_key) = valid_artifact_key_from_filename(&filename) else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -136,6 +153,7 @@ async fn handle_tarball_request(
         Ok(bytes) => bytes,
         Err(_) => {
             return build_block_response(
+                &request_id,
                 ResponseCategory::BlockedFetch,
                 "upstream tarball fetch failed",
                 vec![],
@@ -143,15 +161,35 @@ async fn handle_tarball_request(
         }
     };
 
-    match verify_sha512_integrity(mapping.integrity.as_deref(), &tarball_bytes) {
-        IntegrityStatus::Verified => {}
-        _ => {
-            return build_block_response(
-                ResponseCategory::BlockedIntegrity,
-                "artifact integrity verification failed",
-                vec![],
-            );
-        }
+    let computed_digest = compute_sha512_hex(&tarball_bytes);
+    let tarball_byte_length = tarball_bytes.len() as u64;
+    let upstream_host = state.fetcher.upstream_host().to_string();
+
+    let integrity_status = verify_sha512_integrity(mapping.integrity.as_deref(), &tarball_bytes);
+
+    if integrity_status != IntegrityStatus::Verified {
+        let duration_ms = request_start.elapsed().as_millis() as u64;
+        write_audit_record(&AuditRecord {
+            timestamp,
+            request_id: request_id.clone(),
+            package_name: mapping.package_name.clone(),
+            version: mapping.version.clone(),
+            artifact_key: artifact_key.to_string(),
+            integrity_status: integrity_status_str(&integrity_status).to_string(),
+            computed_digest,
+            remnant_version: state.remnant_version.clone(),
+            response_category: String::from("blocked_integrity"),
+            finding_ids: vec![],
+            duration_ms,
+            upstream_registry_host: Some(upstream_host),
+            tarball_byte_length: Some(tarball_byte_length),
+        });
+        return build_block_response(
+            &request_id,
+            ResponseCategory::BlockedIntegrity,
+            "artifact integrity verification failed",
+            vec![],
+        );
     }
 
     let temp_path = std::env::temp_dir().join(format!("remnant-{}.tgz", Uuid::new_v4()));
@@ -160,7 +198,24 @@ async fn handle_tarball_request(
     };
 
     if tokio::fs::write(&temp_path, &tarball_bytes).await.is_err() {
+        let duration_ms = request_start.elapsed().as_millis() as u64;
+        write_audit_record(&AuditRecord {
+            timestamp,
+            request_id: request_id.clone(),
+            package_name: mapping.package_name.clone(),
+            version: mapping.version.clone(),
+            artifact_key: artifact_key.to_string(),
+            integrity_status: String::from("verified"),
+            computed_digest,
+            remnant_version: state.remnant_version.clone(),
+            response_category: String::from("error"),
+            finding_ids: vec![],
+            duration_ms,
+            upstream_registry_host: Some(upstream_host),
+            tarball_byte_length: Some(tarball_byte_length),
+        });
         return build_block_response(
+            &request_id,
             ResponseCategory::Error,
             "artifact could not be written for inspection",
             vec![],
@@ -168,6 +223,23 @@ async fn handle_tarball_request(
     }
 
     let outcome = run_inspection(&temp_path).await;
+    let duration_ms = request_start.elapsed().as_millis() as u64;
+
+    write_audit_record(&AuditRecord {
+        timestamp,
+        request_id: request_id.clone(),
+        package_name: mapping.package_name.clone(),
+        version: mapping.version.clone(),
+        artifact_key: artifact_key.to_string(),
+        integrity_status: String::from("verified"),
+        computed_digest,
+        remnant_version: state.remnant_version.clone(),
+        response_category: response_category_name(&outcome.category).to_string(),
+        finding_ids: outcome.finding_ids.clone(),
+        duration_ms,
+        upstream_registry_host: Some(upstream_host),
+        tarball_byte_length: Some(tarball_byte_length),
+    });
 
     match outcome.category {
         ResponseCategory::Admitted => {
@@ -180,11 +252,13 @@ async fn handle_tarball_request(
             response
         }
         ResponseCategory::BlockedPolicy => build_block_response(
+            &request_id,
             ResponseCategory::BlockedPolicy,
             "artifact failed policy checks",
             outcome.finding_ids,
         ),
         ResponseCategory::BlockedParse => build_block_response(
+            &request_id,
             ResponseCategory::BlockedParse,
             "artifact could not be inspected",
             vec![],
@@ -192,6 +266,7 @@ async fn handle_tarball_request(
         ResponseCategory::BlockedFetch
         | ResponseCategory::BlockedIntegrity
         | ResponseCategory::Error => build_block_response(
+            &request_id,
             ResponseCategory::Error,
             "artifact inspection failed",
             vec![],
@@ -214,13 +289,13 @@ fn valid_artifact_key_from_filename(filename: &str) -> Option<&str> {
 }
 
 fn build_block_response(
+    request_id: &str,
     category: ResponseCategory,
     error: &'static str,
     finding_ids: Vec<String>,
 ) -> Response<Body> {
-    let request_id = Uuid::new_v4().to_string();
     let finding_ids =
-        finding_ids_within_block_response_limit(&category, error, &request_id, finding_ids);
+        finding_ids_within_block_response_limit(&category, error, request_id, finding_ids);
     let body = Json(json!({
         "error": error,
         "category": response_category_name(&category),
@@ -251,6 +326,15 @@ fn finding_ids_within_block_response_limit(
     }
 
     capped_finding_ids
+}
+
+fn integrity_status_str(status: &IntegrityStatus) -> &'static str {
+    match status {
+        IntegrityStatus::Verified => "verified",
+        IntegrityStatus::Mismatch => "mismatch",
+        IntegrityStatus::Absent => "absent",
+        IntegrityStatus::Unsupported => "unsupported",
+    }
 }
 
 fn block_response_body_len(
