@@ -11,13 +11,6 @@ use crate::admission::{InspectionOutcome, ResponseCategory};
 const REMNANT_BINARY: &str = "remnant";
 const INSPECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Step 3 defines the inspection boundary; Step 5 will call it from tarball request handling"
-    )
-)]
 pub async fn run_inspection(artifact_path: &Path) -> InspectionOutcome {
     run_inspection_with(
         artifact_path,

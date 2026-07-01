@@ -1,14 +1,23 @@
 mod setup;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use serde_json::Value;
+use serde_json::json;
+use sha2::{Digest, Sha512};
 
-use setup::{spawn_proxy_server, spawn_upstream_https_server};
+use crate::admission::ResponseCategory;
+
+use setup::{
+    build_tgz_from_package_json, packument_bytes, read_fixture_package_json, spawn_proxy_server,
+    spawn_upstream_https_server, spawn_upstream_https_server_for_packument_and_tarball,
+};
 
 #[tokio::test]
 async fn metadata_route_returns_rewritten_packument_json() {
     let upstream_response = br#"{"name":"left-pad","versions":{"1.3.0":{"dist":{"tarball":"https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz","integrity":"sha512-abc123=="}}}}"#;
     let (upstream_registry_url, upstream_request) =
-        spawn_upstream_https_server(upstream_response).await;
+        spawn_upstream_https_server(upstream_response.to_vec()).await;
     let (proxy_base_url, proxy_server) = spawn_proxy_server(&upstream_registry_url).await;
 
     let response = reqwest::Client::new()
@@ -69,7 +78,8 @@ async fn metadata_route_returns_blocked_fetch_for_upstream_connection_failure() 
 
 #[tokio::test]
 async fn metadata_route_returns_blocked_parse_for_invalid_packument_json() {
-    let (upstream_registry_url, upstream_request) = spawn_upstream_https_server(b"not json").await;
+    let (upstream_registry_url, upstream_request) =
+        spawn_upstream_https_server(b"not json".to_vec()).await;
     let (proxy_base_url, proxy_server) = spawn_proxy_server(&upstream_registry_url).await;
 
     let response = reqwest::Client::new()
@@ -93,6 +103,39 @@ async fn metadata_route_returns_blocked_parse_for_invalid_packument_json() {
 
     let _request = upstream_request.await.unwrap();
     proxy_server.abort();
+}
+
+#[tokio::test]
+async fn upstream_https_server_for_two_requests_serves_sequential_responses() {
+    let (upstream_registry_url, upstream_server) =
+        setup::spawn_upstream_https_server_for_two_requests(
+            b"first".to_vec(),
+            "application/json",
+            b"second".to_vec(),
+            "application/octet-stream",
+        )
+        .await;
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .unwrap();
+
+    let first_response = client
+        .get(format!("{upstream_registry_url}/first"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(first_response.bytes().await.unwrap(), "first");
+
+    let second_response = client
+        .get(format!("{upstream_registry_url}/second"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(second_response.bytes().await.unwrap(), "second");
+
+    upstream_server.await.unwrap();
 }
 
 #[tokio::test]
@@ -164,38 +207,6 @@ async fn tarball_route_returns_not_found_for_unknown_uppercase_artifact_key() {
 }
 
 #[tokio::test]
-async fn tarball_route_returns_not_implemented_for_known_artifact_key() {
-    let upstream_response = br#"{"name":"left-pad","versions":{"1.3.0":{"dist":{"tarball":"https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz","integrity":"sha512-abc123=="}}}}"#;
-    let (upstream_registry_url, upstream_request) =
-        spawn_upstream_https_server(upstream_response).await;
-    let (proxy_base_url, proxy_server) = spawn_proxy_server(&upstream_registry_url).await;
-
-    let metadata_response = reqwest::Client::new()
-        .get(format!("{proxy_base_url}/left-pad"))
-        .send()
-        .await
-        .unwrap();
-    let body = serde_json::from_slice::<Value>(&metadata_response.bytes().await.unwrap()).unwrap();
-    let rewritten_tarball = body["versions"]["1.3.0"]["dist"]["tarball"]
-        .as_str()
-        .unwrap();
-
-    let tarball_response = reqwest::Client::new()
-        .get(rewritten_tarball)
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        tarball_response.status(),
-        reqwest::StatusCode::NOT_IMPLEMENTED
-    );
-
-    let _request = upstream_request.await.unwrap();
-    proxy_server.abort();
-}
-
-#[tokio::test]
 async fn tarball_route_returns_not_found_for_malformed_filename() {
     let (proxy_base_url, proxy_server) = spawn_proxy_server("https://127.0.0.1:1").await;
 
@@ -208,4 +219,238 @@ async fn tarball_route_returns_not_found_for_malformed_filename() {
     assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
 
     proxy_server.abort();
+}
+
+#[tokio::test]
+async fn tarball_route_returns_200_and_bytes_for_admitted_artifact() {
+    let package_json = read_fixture_package_json("benign", "minimal-package");
+    let tgz_bytes = build_tgz_from_package_json(&package_json);
+    let integrity = sha512_integrity_for(&tgz_bytes);
+    let (upstream_registry_url, upstream_server) =
+        spawn_upstream_https_server_for_packument_and_tarball(
+            "minimal-package",
+            "1.0.0",
+            "/minimal-package/-/minimal-package-1.0.0.tgz",
+            Some(&integrity),
+            tgz_bytes.clone(),
+        )
+        .await;
+    let (proxy_base_url, proxy_server) = spawn_proxy_server(&upstream_registry_url).await;
+
+    let rewritten_tarball = fetch_rewritten_tarball_url(&proxy_base_url, "minimal-package").await;
+    let response = reqwest::Client::new()
+        .get(rewritten_tarball)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "application/octet-stream"
+    );
+    assert_eq!(response.bytes().await.unwrap(), tgz_bytes);
+
+    upstream_server.await.unwrap();
+    proxy_server.abort();
+}
+
+#[tokio::test]
+async fn tarball_route_returns_403_for_blocked_policy_artifact() {
+    let package_json = read_fixture_package_json("suspicious", "install-script-postinstall");
+    let tgz_bytes = build_tgz_from_package_json(&package_json);
+    let integrity = sha512_integrity_for(&tgz_bytes);
+    let upstream_tarball_path =
+        "/install-script-postinstall/-/install-script-postinstall-1.0.0.tgz";
+    let (upstream_registry_url, upstream_server) =
+        spawn_upstream_https_server_for_packument_and_tarball(
+            "install-script-postinstall",
+            "1.0.0",
+            upstream_tarball_path,
+            Some(&integrity),
+            tgz_bytes,
+        )
+        .await;
+    let (proxy_base_url, proxy_server) = spawn_proxy_server(&upstream_registry_url).await;
+
+    let rewritten_tarball =
+        fetch_rewritten_tarball_url(&proxy_base_url, "install-script-postinstall").await;
+    let response = reqwest::Client::new()
+        .get(rewritten_tarball)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), reqwest::StatusCode::FORBIDDEN);
+
+    let body = serde_json::from_slice::<Value>(&response.bytes().await.unwrap()).unwrap();
+
+    assert_eq!(body["category"], "blocked_policy");
+    assert_eq!(
+        body["findingIds"],
+        serde_json::json!(["install-scripts-disallowed"])
+    );
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    );
+    assert!(
+        body["requestId"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    );
+
+    upstream_server.await.unwrap();
+    proxy_server.abort();
+}
+
+#[tokio::test]
+async fn tarball_route_returns_403_for_integrity_mismatch() {
+    let package_json = read_fixture_package_json("benign", "minimal-package");
+    let tgz_bytes = build_tgz_from_package_json(&package_json);
+    let integrity = sha512_integrity_for(&tgz_bytes);
+    let mut modified_tgz_bytes = tgz_bytes;
+    modified_tgz_bytes[0] ^= 0xff;
+    let (upstream_registry_url, upstream_server) =
+        spawn_upstream_https_server_for_packument_and_tarball(
+            "minimal-package",
+            "1.0.0",
+            "/minimal-package/-/minimal-package-1.0.0.tgz",
+            Some(&integrity),
+            modified_tgz_bytes,
+        )
+        .await;
+    let (proxy_base_url, proxy_server) = spawn_proxy_server(&upstream_registry_url).await;
+
+    let rewritten_tarball = fetch_rewritten_tarball_url(&proxy_base_url, "minimal-package").await;
+    let response = reqwest::Client::new()
+        .get(rewritten_tarball)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), reqwest::StatusCode::FORBIDDEN);
+
+    let body = serde_json::from_slice::<Value>(&response.bytes().await.unwrap()).unwrap();
+
+    assert_eq!(body["category"], "blocked_integrity");
+
+    upstream_server.await.unwrap();
+    proxy_server.abort();
+}
+
+#[tokio::test]
+async fn tarball_route_returns_403_for_absent_integrity() {
+    let package_json = read_fixture_package_json("benign", "minimal-package");
+    let tgz_bytes = build_tgz_from_package_json(&package_json);
+    let (upstream_registry_url, upstream_server) =
+        spawn_upstream_https_server_for_packument_and_tarball(
+            "minimal-package",
+            "1.0.0",
+            "/minimal-package/-/minimal-package-1.0.0.tgz",
+            None,
+            tgz_bytes,
+        )
+        .await;
+    let (proxy_base_url, proxy_server) = spawn_proxy_server(&upstream_registry_url).await;
+
+    let rewritten_tarball = fetch_rewritten_tarball_url(&proxy_base_url, "minimal-package").await;
+    let response = reqwest::Client::new()
+        .get(rewritten_tarball)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), reqwest::StatusCode::FORBIDDEN);
+
+    let body = serde_json::from_slice::<Value>(&response.bytes().await.unwrap()).unwrap();
+
+    assert_eq!(body["category"], "blocked_integrity");
+
+    upstream_server.await.unwrap();
+    proxy_server.abort();
+}
+
+#[tokio::test]
+async fn tarball_route_returns_502_for_upstream_tarball_fetch_failure() {
+    let upstream_response = packument_bytes(
+        "minimal-package",
+        "1.0.0",
+        "https://127.0.0.1:1/minimal-package/-/minimal-package-1.0.0.tgz",
+        Some("sha512-abc123=="),
+    );
+    let (upstream_registry_url, upstream_request) =
+        spawn_upstream_https_server(upstream_response).await;
+    let (proxy_base_url, proxy_server) = spawn_proxy_server(&upstream_registry_url).await;
+
+    let rewritten_tarball = fetch_rewritten_tarball_url(&proxy_base_url, "minimal-package").await;
+    let response = reqwest::Client::new()
+        .get(rewritten_tarball)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_GATEWAY);
+
+    let body = serde_json::from_slice::<Value>(&response.bytes().await.unwrap()).unwrap();
+
+    assert_eq!(body["category"], "blocked_fetch");
+
+    let _request = upstream_request.await.unwrap();
+    proxy_server.abort();
+}
+
+#[tokio::test]
+async fn block_response_truncates_finding_ids_to_two_kibibytes() {
+    let finding_ids = (0..512)
+        .map(|index| format!("synthetic-finding-id-{index:04}"))
+        .collect::<Vec<_>>();
+
+    let response = super::build_block_response(
+        ResponseCategory::BlockedPolicy,
+        "artifact failed policy checks",
+        finding_ids,
+    );
+
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = serde_json::from_slice::<Value>(&body_bytes).unwrap();
+
+    assert!(body_bytes.len() <= 2 * 1024);
+    assert_eq!(body["category"], "blocked_policy");
+    assert_eq!(body["error"], "artifact failed policy checks");
+    assert!(
+        body["requestId"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    );
+    assert!(body["findingIds"].as_array().unwrap().len() < 512);
+    assert_ne!(body["findingIds"], json!([]));
+}
+
+async fn fetch_rewritten_tarball_url(proxy_base_url: &str, package_name: &str) -> String {
+    let metadata_response = reqwest::Client::new()
+        .get(format!("{proxy_base_url}/{package_name}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(metadata_response.status(), reqwest::StatusCode::OK);
+
+    let body = serde_json::from_slice::<Value>(&metadata_response.bytes().await.unwrap()).unwrap();
+
+    body["versions"]["1.0.0"]["dist"]["tarball"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+fn sha512_integrity_for(bytes: &[u8]) -> String {
+    format!("sha512-{}", STANDARD.encode(Sha512::digest(bytes)))
 }
