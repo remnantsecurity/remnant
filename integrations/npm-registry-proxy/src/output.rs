@@ -5,7 +5,7 @@
     not(test),
     expect(
         dead_code,
-        reason = "Step 6 will use it for escaping upstream data in server-side output"
+        reason = "reserved for future terminal output of upstream data; audit record JSON uses serde_json escaping instead"
     )
 )]
 pub fn escape_for_terminal(bytes: &[u8]) -> String {

@@ -413,6 +413,7 @@ async fn block_response_truncates_finding_ids_to_two_kibibytes() {
         .collect::<Vec<_>>();
 
     let response = super::build_block_response(
+        "test-request-id",
         ResponseCategory::BlockedPolicy,
         "artifact failed policy checks",
         finding_ids,
@@ -426,11 +427,7 @@ async fn block_response_truncates_finding_ids_to_two_kibibytes() {
     assert!(body_bytes.len() <= 2 * 1024);
     assert_eq!(body["category"], "blocked_policy");
     assert_eq!(body["error"], "artifact failed policy checks");
-    assert!(
-        body["requestId"]
-            .as_str()
-            .is_some_and(|value| !value.is_empty())
-    );
+    assert_eq!(body["requestId"], "test-request-id");
     assert!(body["findingIds"].as_array().unwrap().len() < 512);
     assert_ne!(body["findingIds"], json!([]));
 }

@@ -21,7 +21,7 @@ pub(super) async fn spawn_proxy_server(
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let proxy_origin = format!("http://localhost:{port}");
-    let state = AppState::new(fetcher, proxy_origin);
+    let state = AppState::new(fetcher, proxy_origin, String::from("test-version"));
 
     let server_handle = tokio::spawn(async move {
         axum::serve(listener, build_router(state)).await.unwrap();

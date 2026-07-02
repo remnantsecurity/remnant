@@ -50,6 +50,10 @@ impl UpstreamFetcher {
         })
     }
 
+    pub fn upstream_host(&self) -> &str {
+        self.upstream_registry.host_str().unwrap_or("")
+    }
+
     #[cfg(test)]
     pub(crate) fn new_with_danger_certs_for_testing(
         upstream_registry: &str,
