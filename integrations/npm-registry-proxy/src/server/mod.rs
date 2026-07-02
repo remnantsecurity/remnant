@@ -18,6 +18,8 @@ use crate::artifact::{
     ArtifactMapping, IntegrityStatus, compute_sha512_hex, rewrite_packument_tarball_urls,
     verify_sha512_integrity,
 };
+#[cfg(test)]
+use crate::audit::format_audit_record;
 use crate::audit::{AuditRecord, write_audit_record};
 use crate::inspection::run_inspection;
 use crate::package_name::ValidatedPackageName;
@@ -32,6 +34,8 @@ pub(crate) struct AppState {
     artifact_mapping: Arc<RwLock<HashMap<String, ArtifactMapping>>>,
     proxy_origin: String,
     remnant_version: String,
+    #[cfg(test)]
+    audit_sink: Option<tokio::sync::mpsc::UnboundedSender<String>>,
 }
 
 impl AppState {
@@ -45,6 +49,16 @@ impl AppState {
             artifact_mapping: Arc::new(RwLock::new(HashMap::new())),
             proxy_origin: proxy_origin.into(),
             remnant_version: remnant_version.into(),
+            #[cfg(test)]
+            audit_sink: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_audit_sink(self, sink: tokio::sync::mpsc::UnboundedSender<String>) -> Self {
+        Self {
+            audit_sink: Some(sink),
+            ..self
         }
     }
 }
@@ -228,7 +242,7 @@ async fn handle_tarball_request(
     let outcome = run_inspection(&temp_path).await;
     let duration_ms = request_start.elapsed().as_millis() as u64;
 
-    write_audit_record(&AuditRecord {
+    let post_inspection_record = AuditRecord {
         timestamp,
         request_id: request_id.clone(),
         package_name: mapping.package_name.clone(),
@@ -242,7 +256,12 @@ async fn handle_tarball_request(
         duration_ms,
         upstream_registry_host: Some(upstream_host),
         tarball_byte_length: Some(tarball_byte_length),
-    });
+    };
+    write_audit_record(&post_inspection_record);
+    #[cfg(test)]
+    if let Some(ref sink) = state.audit_sink {
+        let _ = sink.send(format_audit_record(&post_inspection_record));
+    }
 
     match outcome.category {
         ResponseCategory::Admitted => {

@@ -8,6 +8,9 @@ use tokio::process::Command;
 
 use crate::admission::{InspectionOutcome, ResponseCategory};
 
+// Resolved from PATH at subprocess spawn time with no path validation.
+// In production, ensure the `remnant` binary is installed and the deployment
+// PATH is restricted to trusted directories before the proxy handles real traffic.
 const REMNANT_BINARY: &str = "remnant";
 const INSPECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
