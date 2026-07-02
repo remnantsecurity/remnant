@@ -30,6 +30,29 @@ pub(super) async fn spawn_proxy_server(
     (format!("http://127.0.0.1:{port}"), server_handle)
 }
 
+pub(super) async fn spawn_proxy_server_with_audit_sink(
+    upstream_registry_url: &str,
+) -> (
+    String,
+    tokio::task::JoinHandle<()>,
+    tokio::sync::mpsc::UnboundedReceiver<String>,
+) {
+    let fetcher =
+        UpstreamFetcher::new_with_danger_certs_for_testing(upstream_registry_url).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let proxy_origin = format!("http://localhost:{port}");
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let state =
+        AppState::new(fetcher, proxy_origin, String::from("test-version")).with_audit_sink(tx);
+
+    let server_handle = tokio::spawn(async move {
+        axum::serve(listener, build_router(state)).await.unwrap();
+    });
+
+    (format!("http://127.0.0.1:{port}"), server_handle, rx)
+}
+
 pub(super) async fn spawn_upstream_https_server(
     response_body: Vec<u8>,
 ) -> (String, tokio::task::JoinHandle<String>) {

@@ -14,6 +14,11 @@ path = "src/main.rs"
 axum = "0.8"
 bytes = "1.11.0"
 base64 = "0.22.1"
+# RFC 3339 millisecond-precision timestamps for audit records. The standard library
+# does not provide calendar date conversion from a Unix epoch. `default-features = false`
+# disables serde and other optional features; `clock` provides `Utc::now()`. Transitive
+# platform sub-crates (wasm-bindgen, js-sys, windows-core) appear in Cargo.lock as
+# target-conditional deps of iana-time-zone and are not compiled for native targets.
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 futures-util = "0.3.31"
 reqwest = { version = "0.12.24", default-features = false, features = ["rustls-tls", "stream"] }

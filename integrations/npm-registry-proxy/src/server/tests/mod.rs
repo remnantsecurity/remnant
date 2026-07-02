@@ -11,7 +11,8 @@ use crate::admission::ResponseCategory;
 
 use setup::{
     build_tgz_from_package_json, packument_bytes, read_fixture_package_json, spawn_proxy_server,
-    spawn_upstream_https_server, spawn_upstream_https_server_for_packument_and_tarball,
+    spawn_proxy_server_with_audit_sink, spawn_upstream_https_server,
+    spawn_upstream_https_server_for_packument_and_tarball,
 };
 
 #[test]
@@ -359,6 +360,54 @@ async fn tarball_route_returns_200_and_bytes_for_admitted_artifact() {
         "application/octet-stream"
     );
     assert_eq!(response.bytes().await.unwrap(), tgz_bytes);
+
+    upstream_server.await.unwrap();
+    proxy_server.abort();
+}
+
+#[tokio::test]
+async fn tarball_route_emits_audit_record_for_admitted_artifact() {
+    let package_json = read_fixture_package_json("benign", "minimal-package");
+    let tgz_bytes = build_tgz_from_package_json(&package_json);
+    let integrity = sha512_integrity_for(&tgz_bytes);
+    let (upstream_registry_url, upstream_server) =
+        spawn_upstream_https_server_for_packument_and_tarball(
+            "minimal-package",
+            "1.0.0",
+            "/minimal-package/-/minimal-package-1.0.0.tgz",
+            Some(&integrity),
+            tgz_bytes,
+        )
+        .await;
+    let (proxy_base_url, proxy_server, mut audit_rx) =
+        spawn_proxy_server_with_audit_sink(&upstream_registry_url).await;
+
+    let rewritten_tarball = fetch_rewritten_tarball_url(&proxy_base_url, "minimal-package").await;
+    let response = reqwest::Client::new()
+        .get(rewritten_tarball)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+    let record_line = tokio::time::timeout(std::time::Duration::from_secs(5), audit_rx.recv())
+        .await
+        .expect("audit record should be received within 5 seconds")
+        .expect("audit channel should not be closed before record is sent");
+
+    let record = serde_json::from_str::<Value>(&record_line).unwrap();
+
+    assert_eq!(record["responseCategory"], "admitted");
+    assert_eq!(record["packageName"], "minimal-package");
+    assert_eq!(record["version"], "1.0.0");
+    assert_eq!(record["integrityStatus"], "verified");
+    assert!(
+        record["artifactKey"]
+            .as_str()
+            .is_some_and(|key| key.len() == 64)
+    );
+    assert!(record["durationMs"].is_number());
 
     upstream_server.await.unwrap();
     proxy_server.abort();
