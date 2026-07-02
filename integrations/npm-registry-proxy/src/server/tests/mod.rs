@@ -1,5 +1,6 @@
 mod setup;
 
+use axum::http::StatusCode;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use serde_json::Value;
@@ -12,6 +13,52 @@ use setup::{
     build_tgz_from_package_json, packument_bytes, read_fixture_package_json, spawn_proxy_server,
     spawn_upstream_https_server, spawn_upstream_https_server_for_packument_and_tarball,
 };
+
+#[test]
+fn response_category_status_returns_unprocessable_entity_for_blocked_parse() {
+    assert_eq!(
+        super::response_category_status(&ResponseCategory::BlockedParse),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+}
+
+#[test]
+fn response_category_status_returns_forbidden_for_blocked_policy() {
+    assert_eq!(
+        super::response_category_status(&ResponseCategory::BlockedPolicy),
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[test]
+fn response_category_status_returns_forbidden_for_blocked_integrity() {
+    assert_eq!(
+        super::response_category_status(&ResponseCategory::BlockedIntegrity),
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[test]
+fn response_category_status_returns_bad_gateway_for_blocked_fetch() {
+    assert_eq!(
+        super::response_category_status(&ResponseCategory::BlockedFetch),
+        StatusCode::BAD_GATEWAY
+    );
+}
+
+#[test]
+fn response_category_status_returns_internal_server_error_for_error() {
+    assert_eq!(
+        super::response_category_status(&ResponseCategory::Error),
+        StatusCode::INTERNAL_SERVER_ERROR
+    );
+}
+
+#[test]
+#[should_panic(expected = "Admitted responses are returned directly")]
+fn response_category_status_panics_for_admitted() {
+    super::response_category_status(&ResponseCategory::Admitted);
+}
 
 #[tokio::test]
 async fn metadata_route_returns_rewritten_packument_json() {

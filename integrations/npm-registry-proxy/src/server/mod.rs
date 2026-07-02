@@ -360,7 +360,10 @@ fn response_category_status(category: &ResponseCategory) -> StatusCode {
             StatusCode::FORBIDDEN
         }
         ResponseCategory::BlockedFetch => StatusCode::BAD_GATEWAY,
-        ResponseCategory::Admitted | ResponseCategory::Error => StatusCode::INTERNAL_SERVER_ERROR,
+        ResponseCategory::Error => StatusCode::INTERNAL_SERVER_ERROR,
+        ResponseCategory::Admitted => unreachable!(
+            "Admitted responses are returned directly; build_block_response must not be called with Admitted"
+        ),
     }
 }
 
