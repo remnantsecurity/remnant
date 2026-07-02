@@ -52,6 +52,9 @@ impl AppState {
 pub(crate) fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/remnant/tarballs/{filename}", get(handle_tarball_request))
+        // Scoped package names (@scope/name) must be percent-encoded by the client
+        // as a single path segment (@scope%2Fname). An unencoded /@scope/name request
+        // matches a two-segment path and returns 404.
         .route("/{package}", get(handle_metadata_request))
         .with_state(state)
 }
