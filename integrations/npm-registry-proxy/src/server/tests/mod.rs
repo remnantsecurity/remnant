@@ -60,6 +60,24 @@ fn response_category_status_panics_for_admitted() {
     super::response_category_status(&ResponseCategory::Admitted);
 }
 
+#[test]
+fn valid_artifact_key_from_filename_returns_key_for_lowercase_hex_filename() {
+    let artifact_key = "a".repeat(64);
+    let filename = format!("{artifact_key}.tgz");
+
+    assert_eq!(
+        super::valid_artifact_key_from_filename(&filename),
+        Some(artifact_key.as_str())
+    );
+}
+
+#[test]
+fn valid_artifact_key_from_filename_returns_none_for_uppercase_hex_filename() {
+    let filename = format!("{}.tgz", "A".repeat(64));
+
+    assert_eq!(super::valid_artifact_key_from_filename(&filename), None);
+}
+
 #[tokio::test]
 async fn metadata_route_returns_rewritten_packument_json() {
     let upstream_response = br#"{"name":"left-pad","versions":{"1.3.0":{"dist":{"tarball":"https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz","integrity":"sha512-abc123=="}}}}"#;

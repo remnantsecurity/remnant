@@ -281,7 +281,10 @@ fn valid_artifact_key_from_filename(filename: &str) -> Option<&str> {
         return None;
     }
 
-    if artifact_key.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    if artifact_key
+        .bytes()
+        .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    {
         Some(artifact_key)
     } else {
         None
