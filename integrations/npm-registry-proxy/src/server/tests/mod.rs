@@ -117,6 +117,45 @@ async fn metadata_route_returns_rewritten_packument_json() {
 }
 
 #[tokio::test]
+async fn metadata_route_returns_rewritten_packument_for_scoped_package_name() {
+    let upstream_response = packument_bytes(
+        "@babel/core",
+        "7.0.0",
+        "https://registry.npmjs.org/@babel/core/-/core-7.0.0.tgz",
+        Some("sha512-abc123=="),
+    );
+    let (upstream_registry_url, upstream_request) =
+        spawn_upstream_https_server(upstream_response).await;
+    let (proxy_base_url, proxy_server) = spawn_proxy_server(&upstream_registry_url).await;
+
+    let response = reqwest::Client::new()
+        .get(format!("{proxy_base_url}/@babel%2Fcore"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+    let body = serde_json::from_slice::<Value>(&response.bytes().await.unwrap()).unwrap();
+    let rewritten_tarball = body["versions"]["7.0.0"]["dist"]["tarball"]
+        .as_str()
+        .unwrap();
+    let proxy_port = proxy_base_url.rsplit(':').next().unwrap();
+
+    assert!(
+        rewritten_tarball.starts_with(&format!("http://localhost:{proxy_port}/remnant/tarballs/"))
+    );
+
+    let request = upstream_request.await.unwrap();
+    assert!(
+        request.starts_with("GET /@babel%2Fcore "),
+        "upstream should receive scoped package name as a single percent-encoded path segment"
+    );
+
+    proxy_server.abort();
+}
+
+#[tokio::test]
 async fn metadata_route_returns_blocked_fetch_for_upstream_connection_failure() {
     let (proxy_base_url, proxy_server) = spawn_proxy_server("https://127.0.0.1:1").await;
 
