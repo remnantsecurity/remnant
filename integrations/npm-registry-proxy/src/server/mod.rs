@@ -77,9 +77,14 @@ struct TempFile {
     path: PathBuf,
 }
 
+// NOTE: TempFile is only ever dropped from within an axum request handler or
+// a #[tokio::test], so a Tokio runtime is always active when drop runs.
 impl Drop for TempFile {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        let path = self.path.clone();
+        tokio::task::spawn(async move {
+            let _ = tokio::fs::remove_file(&path).await;
+        });
     }
 }
 
