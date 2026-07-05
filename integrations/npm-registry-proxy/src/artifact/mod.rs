@@ -15,6 +15,9 @@ const MAX_VERSION_BYTES: usize = 128;
 const MAX_TARBALL_URL_BYTES: usize = 256;
 const MAX_INTEGRITY_BYTES: usize = 128;
 
+type ArtifactMappings = HashMap<String, ArtifactMapping>;
+type UrlRewrites = Vec<(String, String)>;
+
 pub struct RewrittenPackument {
     pub bytes: Vec<u8>,
     pub artifacts: HashMap<String, ArtifactMapping>,
@@ -44,22 +47,33 @@ pub enum PackumentRewriteError {
     InvalidPackageName,
     VersionsMissing,
     VersionsIsNotObject,
-    TooManyVersions { limit: usize },
+    TooManyVersions {
+        limit: usize,
+    },
     DistTagsIsNotObject,
-    TooManyDistTags { limit: usize },
+    TooManyDistTags {
+        limit: usize,
+    },
     VersionStringIsEmpty,
-    VersionStringTooLong { limit: usize },
+    VersionStringTooLong {
+        limit: usize,
+    },
     VersionStringHasUnsupportedCharacter,
     VersionEntryIsNotObject,
     DistIsNotObject,
     TarballUrlMissing,
     TarballUrlIsNotString,
-    TarballUrlTooLong { limit: usize },
+    TarballUrlTooLong {
+        limit: usize,
+    },
     TarballUrlInvalid,
     TarballUrlSchemeNotHttps,
     IntegrityIsNotString,
-    IntegrityTooLong { limit: usize },
+    IntegrityTooLong {
+        limit: usize,
+    },
     ProxyOriginInvalid,
+    #[allow(dead_code)]
     SerializationFailed,
 }
 
@@ -137,21 +151,31 @@ pub fn rewrite_packument_tarball_urls(
     bytes: &[u8],
     proxy_origin: &str,
 ) -> Result<RewrittenPackument, PackumentRewriteError> {
-    let mut packument: Value =
+    let (artifacts, url_rewrites) = extract_packument_data(bytes, proxy_origin)?;
+    let bytes = apply_url_rewrites(bytes, &url_rewrites);
+
+    Ok(RewrittenPackument { bytes, artifacts })
+}
+
+fn extract_packument_data(
+    bytes: &[u8],
+    proxy_origin: &str,
+) -> Result<(ArtifactMappings, UrlRewrites), PackumentRewriteError> {
+    let packument: Value =
         serde_json::from_slice(bytes).map_err(|_| PackumentRewriteError::InvalidJson)?;
     let proxy_origin =
         Url::parse(proxy_origin).map_err(|_| PackumentRewriteError::ProxyOriginInvalid)?;
 
     let root = packument
-        .as_object_mut()
+        .as_object()
         .ok_or(PackumentRewriteError::RootIsNotObject)?;
     let package_name = validated_packument_package_name(root)?;
     validate_dist_tags_count(root)?;
 
     let versions = root
-        .get_mut("versions")
+        .get("versions")
         .ok_or(PackumentRewriteError::VersionsMissing)?
-        .as_object_mut()
+        .as_object()
         .ok_or(PackumentRewriteError::VersionsIsNotObject)?;
 
     if versions.len() > MAX_VERSIONS {
@@ -161,23 +185,24 @@ pub fn rewrite_packument_tarball_urls(
     }
 
     let mut artifacts = HashMap::new();
+    let mut url_rewrites = Vec::new();
 
     for (version, version_entry) in versions {
         validate_version_string(version)?;
         let version_object = version_entry
-            .as_object_mut()
+            .as_object()
             .ok_or(PackumentRewriteError::VersionEntryIsNotObject)?;
         let dist_object = version_object
-            .get_mut("dist")
+            .get("dist")
             .ok_or(PackumentRewriteError::DistIsNotObject)?
-            .as_object_mut()
+            .as_object()
             .ok_or(PackumentRewriteError::DistIsNotObject)?;
         let upstream_url = validated_tarball_url(dist_object)?;
         let integrity = validated_integrity_value(dist_object)?;
         let artifact_key = compute_artifact_key(package_name.as_str(), version, &upstream_url);
         let rewritten_url = build_rewritten_tarball_url(&proxy_origin, &artifact_key)?;
 
-        dist_object.insert(String::from("tarball"), Value::String(rewritten_url));
+        url_rewrites.push((upstream_url.clone(), rewritten_url));
         artifacts.insert(
             artifact_key,
             ArtifactMapping {
@@ -189,10 +214,50 @@ pub fn rewrite_packument_tarball_urls(
         );
     }
 
-    let bytes =
-        serde_json::to_vec(&packument).map_err(|_| PackumentRewriteError::SerializationFailed)?;
+    Ok((artifacts, url_rewrites))
+}
 
-    Ok(RewrittenPackument { bytes, artifacts })
+fn apply_url_rewrites(input: &[u8], rewrites: &[(String, String)]) -> Vec<u8> {
+    if rewrites.is_empty() {
+        return input.to_vec();
+    }
+
+    let rewrite_patterns: Vec<(Vec<u8>, Vec<u8>)> = rewrites
+        .iter()
+        .map(|(upstream_url, rewritten_url)| {
+            let mut find = Vec::with_capacity(upstream_url.len() + 2);
+            find.push(b'"');
+            find.extend_from_slice(upstream_url.as_bytes());
+            find.push(b'"');
+
+            let mut replace = Vec::with_capacity(rewritten_url.len() + 2);
+            replace.push(b'"');
+            replace.extend_from_slice(rewritten_url.as_bytes());
+            replace.push(b'"');
+
+            (find, replace)
+        })
+        .collect();
+
+    let mut output = Vec::with_capacity(input.len());
+    let mut position = 0;
+
+    while position < input.len() {
+        if input[position] == b'"'
+            && let Some((find, replace)) = rewrite_patterns
+                .iter()
+                .find(|(find, _)| input[position..].starts_with(find))
+        {
+            output.extend_from_slice(replace);
+            position += find.len();
+            continue;
+        }
+
+        output.push(input[position]);
+        position += 1;
+    }
+
+    output
 }
 
 pub fn verify_sha512_integrity(integrity: Option<&str>, artifact_bytes: &[u8]) -> IntegrityStatus {

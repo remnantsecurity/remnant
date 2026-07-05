@@ -500,6 +500,66 @@ fn reports_unsupported_integrity_for_wrong_sha512_digest_length() {
     assert_eq!(status, IntegrityStatus::Unsupported);
 }
 
+#[test]
+fn rewrites_single_quoted_url_string_in_byte_slice() {
+    let input = br#"{"dist":{"tarball":"https://registry.npmjs.org/pkg/-/pkg-1.0.0.tgz"}}"#;
+    let rewrites = vec![(
+        String::from("https://registry.npmjs.org/pkg/-/pkg-1.0.0.tgz"),
+        String::from("https://proxy.example.com/remnant/tarballs/deadbeef.tgz"),
+    )];
+
+    let output = apply_url_rewrites(input, &rewrites);
+
+    assert_eq!(
+        output,
+        br#"{"dist":{"tarball":"https://proxy.example.com/remnant/tarballs/deadbeef.tgz"}}"#
+    );
+}
+
+#[test]
+fn rewrites_multiple_quoted_url_strings_in_byte_slice() {
+    let input = br#"{"v1":{"tarball":"https://r.npmjs.org/a-1.tgz"},"v2":{"tarball":"https://r.npmjs.org/a-2.tgz"}}"#;
+    let rewrites = vec![
+        (
+            String::from("https://r.npmjs.org/a-1.tgz"),
+            String::from("https://proxy.example.com/tarballs/key1.tgz"),
+        ),
+        (
+            String::from("https://r.npmjs.org/a-2.tgz"),
+            String::from("https://proxy.example.com/tarballs/key2.tgz"),
+        ),
+    ];
+
+    let output = apply_url_rewrites(input, &rewrites);
+
+    assert_eq!(
+        output,
+        br#"{"v1":{"tarball":"https://proxy.example.com/tarballs/key1.tgz"},"v2":{"tarball":"https://proxy.example.com/tarballs/key2.tgz"}}"#
+    );
+}
+
+#[test]
+fn copies_bytes_containing_no_matching_url_unchanged() {
+    let input = br#"{"name":"pkg","version":"1.0.0"}"#;
+    let rewrites = vec![(
+        String::from("https://registry.npmjs.org/pkg/-/pkg-1.0.0.tgz"),
+        String::from("https://proxy.example.com/tarballs/key.tgz"),
+    )];
+
+    let output = apply_url_rewrites(input, &rewrites);
+
+    assert_eq!(output, input.as_ref());
+}
+
+#[test]
+fn returns_input_bytes_unchanged_when_rewrite_list_is_empty() {
+    let input = br#"{"tarball":"https://registry.npmjs.org/pkg/-/pkg-1.0.0.tgz"}"#;
+
+    let output = apply_url_rewrites(input, &[]);
+
+    assert_eq!(output, input.as_ref());
+}
+
 fn rewrite_error(packument: Value) -> PackumentRewriteError {
     rewrite_packument_tarball_urls(
         serde_json::to_vec(&packument).unwrap().as_slice(),
