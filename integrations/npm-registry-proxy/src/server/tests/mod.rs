@@ -80,6 +80,21 @@ fn valid_artifact_key_from_filename_returns_none_for_uppercase_hex_filename() {
 }
 
 #[tokio::test]
+async fn temp_file_removes_file_on_drop() {
+    let path = std::env::temp_dir().join(format!("remnant-test-{}.tgz", uuid::Uuid::new_v4()));
+    tokio::fs::write(&path, b"test").await.unwrap();
+    assert!(path.exists(), "file should exist before drop");
+
+    drop(super::TempFile { path: path.clone() });
+
+    for _ in 0..10 {
+        tokio::task::yield_now().await;
+    }
+
+    assert!(!path.exists(), "TempFile drop should remove the file");
+}
+
+#[tokio::test]
 async fn metadata_route_returns_rewritten_packument_json() {
     let upstream_response = br#"{"name":"left-pad","versions":{"1.3.0":{"dist":{"tarball":"https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz","integrity":"sha512-abc123=="}}}}"#;
     let (upstream_registry_url, upstream_request) =
