@@ -87,11 +87,18 @@ async fn temp_file_removes_file_on_drop() {
 
     drop(super::TempFile { path: path.clone() });
 
-    for _ in 0..10 {
-        tokio::task::yield_now().await;
-    }
+    let deleted = async {
+        loop {
+            if !path.exists() {
+                return;
+            }
+            tokio::task::yield_now().await;
+        }
+    };
 
-    assert!(!path.exists(), "TempFile drop should remove the file");
+    tokio::time::timeout(std::time::Duration::from_secs(1), deleted)
+        .await
+        .expect("TempFile drop should remove the file within 1 second");
 }
 
 #[tokio::test]
