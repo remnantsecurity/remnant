@@ -50,6 +50,9 @@ jobs:
       - name: Ensure Rust components are available
         run: rustup component add rustfmt clippy
 
+      - name: Install remnant CLI
+        run: cargo install --path ${{ github.workspace }}/crates/remnant-cli --locked
+
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
 
