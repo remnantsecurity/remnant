@@ -15,7 +15,7 @@ fn rejects_missing_artifact() {
 
     let result = validate_artifact_path(&path);
 
-    assert_eq!(result, Err(InspectError::ArtifactDoesNotExist(path)));
+    assert_eq!(result.err(), Some(InspectError::ArtifactDoesNotExist(path)));
 }
 
 #[test]
@@ -29,7 +29,7 @@ fn rejects_directory_artifact() {
 
     remove_path_if_exists(&path);
 
-    assert_eq!(result, Err(InspectError::ArtifactIsNotFile(path)));
+    assert_eq!(result.err(), Some(InspectError::ArtifactIsNotFile(path)));
 }
 
 #[test]
@@ -43,7 +43,7 @@ fn rejects_non_tgz_artifact() {
 
     remove_path_if_exists(&path);
 
-    assert_eq!(result, Err(InspectError::ArtifactIsNotTgz(path)));
+    assert_eq!(result.err(), Some(InspectError::ArtifactIsNotTgz(path)));
 }
 
 #[test]
@@ -57,7 +57,7 @@ fn accepts_tgz_file() {
 
     remove_path_if_exists(&path);
 
-    assert_eq!(result, Ok(()));
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -484,5 +484,8 @@ fn rejects_symlink_to_tgz_file() {
     remove_path_if_exists(&symlink_path);
     remove_path_if_exists(&target_path);
 
-    assert_eq!(result, Err(InspectError::ArtifactIsNotFile(symlink_path)));
+    assert_eq!(
+        result.err(),
+        Some(InspectError::ArtifactIsNotFile(symlink_path))
+    );
 }

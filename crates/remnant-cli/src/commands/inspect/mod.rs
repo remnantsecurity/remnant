@@ -145,9 +145,9 @@ pub fn run(
 }
 
 fn run_human(path: PathBuf) -> Result<InspectOutcome, InspectError> {
-    validate_artifact_path(&path)?;
+    let file = validate_artifact_path(&path)?;
 
-    let archive_inspection = inspect_archive(&path)?;
+    let archive_inspection = inspect_archive(file, &path)?;
     let package_metadata = parse_package_json(&archive_inspection.package_json)?;
     let policy_result = evaluate_default_policy(&package_metadata, &archive_inspection.entries);
 
@@ -185,12 +185,15 @@ fn run_human(path: PathBuf) -> Result<InspectOutcome, InspectError> {
 }
 
 fn run_json(path: PathBuf) -> Result<InspectOutcome, InspectError> {
-    if let Err(error) = validate_artifact_path(&path) {
-        print_json_report(&build_json_error_report(&error));
-        return Err(error);
-    }
+    let file = match validate_artifact_path(&path) {
+        Ok(file) => file,
+        Err(error) => {
+            print_json_report(&build_json_error_report(&error));
+            return Err(error);
+        }
+    };
 
-    let archive_inspection = match inspect_archive(&path) {
+    let archive_inspection = match inspect_archive(file, &path) {
         Ok(archive_inspection) => archive_inspection,
         Err(error) => {
             let error = InspectError::Archive(error);
@@ -527,7 +530,10 @@ fn print_json_report(report: &Value) {
 /// This function intentionally uses `fs::symlink_metadata` instead of following
 /// symlinks. Remnant treats the user-provided artifact path as untrusted input,
 /// so symlinks are rejected unless support for them is explicitly designed.
-fn validate_artifact_path(path: &Path) -> Result<(), InspectError> {
+/// On success, this returns an open file handle for the validated artifact. The
+/// caller must pass this handle directly to `inspect_archive` to avoid a second
+/// path lookup.
+fn validate_artifact_path(path: &Path) -> Result<fs::File, InspectError> {
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
@@ -554,7 +560,12 @@ fn validate_artifact_path(path: &Path) -> Result<(), InspectError> {
         return Err(InspectError::ArtifactIsNotTgz(path.to_path_buf()));
     }
 
-    Ok(())
+    fs::File::open(path).map_err(|error| {
+        InspectError::Archive(ArchiveError::ArtifactOpenFailed {
+            path: path.to_path_buf(),
+            kind: error.kind(),
+        })
+    })
 }
 
 #[cfg(test)]
