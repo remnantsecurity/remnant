@@ -19,6 +19,9 @@ pub const LOCAL_DEPENDENCY_SPECIFIER_DISALLOWED_RULE_ID: &str =
     "local-dependency-specifier-disallowed";
 pub const SUSPICIOUS_FILE_DETECTED_RULE_ID: &str = "suspicious-file-detected";
 
+// Entries are canonical ASCII lowercase. `suspicious_file_path` compares against
+// the lowercased archive entry path so case variants on case-insensitive filesystems
+// are caught. Finding messages report the original archive path casing.
 const SUSPICIOUS_FILE_PATHS: &[&str] = &["package/.npmrc"];
 
 /// The overall result of policy evaluation.
@@ -220,12 +223,12 @@ fn collect_local_dependency_references(
 
 fn suspicious_file_path(path: &Path) -> Option<String> {
     // Accepted archive entry paths are normalized only after UTF-8 validation.
-    let path = path
+    let path_str = path
         .to_str()
         .expect("validated archive entry paths must be UTF-8");
 
-    if SUSPICIOUS_FILE_PATHS.contains(&path) {
-        return Some(path.to_string());
+    if SUSPICIOUS_FILE_PATHS.contains(&path_str.to_ascii_lowercase().as_str()) {
+        return Some(path_str.to_string());
     }
 
     None
