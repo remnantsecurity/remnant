@@ -277,6 +277,41 @@ fn suspicious_file_policy_fails_for_npmrc() {
 }
 
 #[test]
+fn suspicious_file_policy_fails_for_uppercase_npmrc() {
+    let entries = vec![
+        archive_entry("package/package.json"),
+        archive_entry("package/.NPMRC"),
+    ];
+
+    let result = evaluate_suspicious_file_policy(&entries);
+
+    assert_eq!(result.status(), PolicyStatus::Failed);
+    assert_eq!(result.findings().len(), 1);
+    assert_eq!(
+        result.findings()[0].rule_id(),
+        SUSPICIOUS_FILE_DETECTED_RULE_ID
+    );
+    assert_eq!(
+        result.findings()[0].message(),
+        "package contains suspicious files: package/.NPMRC"
+    );
+}
+
+#[test]
+fn suspicious_file_policy_reports_original_casing_in_finding() {
+    let entries = vec![archive_entry("package/.Npmrc")];
+
+    let result = evaluate_suspicious_file_policy(&entries);
+
+    assert_eq!(result.status(), PolicyStatus::Failed);
+    assert_eq!(result.findings().len(), 1);
+    assert_eq!(
+        result.findings()[0].message(),
+        "package contains suspicious files: package/.Npmrc"
+    );
+}
+
+#[test]
 fn default_policy_combines_findings_deterministically() {
     let mut metadata = package_metadata_with_scripts(&["postinstall"], &["postinstall"]);
     metadata.dependencies = vec![dependency("local-tool", "file:../local-tool")];
