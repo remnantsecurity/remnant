@@ -66,17 +66,24 @@ pub struct ArchiveInspection {
     )
 )]
 pub(crate) fn read_archive_entries(path: &Path) -> Result<Vec<ArchiveEntry>, ArchiveError> {
-    Ok(traverse_archive(path, PackageJsonReadMode::Ignore)?.entries)
+    let file = File::open(path).map_err(|error| ArchiveError::ArtifactOpenFailed {
+        path: path.to_path_buf(),
+        kind: error.kind(),
+    })?;
+
+    Ok(traverse_archive(file, path, PackageJsonReadMode::Ignore)?.entries)
 }
 
-/// Opens, validates, and inspects a gzip-compressed tar archive once.
+/// Validates and inspects a pre-opened gzip-compressed tar archive once.
 ///
+/// The caller is responsible for opening the file so no second path lookup
+/// occurs between artifact validation and archive reading.
 /// This does not extract archive contents to disk. The full archive stream is
 /// traversed so unsafe entries, duplicate paths, unsupported entry types, and
 /// resource-limit violations are rejected even when `package/package.json` is
 /// found early.
-pub fn inspect_archive(path: &Path) -> Result<ArchiveInspection, ArchiveError> {
-    let traversal = traverse_archive(path, PackageJsonReadMode::Capture)?;
+pub fn inspect_archive(file: File, path: &Path) -> Result<ArchiveInspection, ArchiveError> {
+    let traversal = traverse_archive(file, path, PackageJsonReadMode::Capture)?;
     let package_json = traversal
         .package_json
         .ok_or_else(|| ArchiveError::PackageJsonMissing(path.to_path_buf()))?;
@@ -95,7 +102,12 @@ pub fn inspect_archive(path: &Path) -> Result<ArchiveInspection, ArchiveError> {
 /// is found early.
 #[cfg(test)]
 pub fn read_package_json(path: &Path) -> Result<Vec<u8>, ArchiveError> {
-    Ok(inspect_archive(path)?.package_json)
+    let file = File::open(path).map_err(|error| ArchiveError::ArtifactOpenFailed {
+        path: path.to_path_buf(),
+        kind: error.kind(),
+    })?;
+
+    Ok(inspect_archive(file, path)?.package_json)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -111,14 +123,10 @@ struct ArchiveTraversal {
 }
 
 fn traverse_archive(
+    file: File,
     path: &Path,
     package_json_read_mode: PackageJsonReadMode,
 ) -> Result<ArchiveTraversal, ArchiveError> {
-    let file = File::open(path).map_err(|error| ArchiveError::ArtifactOpenFailed {
-        path: path.to_path_buf(),
-        kind: error.kind(),
-    })?;
-
     let decoder = GzDecoder::new(file);
     let limited_decoder = DecompressedArchiveReader::new(decoder, MAX_DECOMPRESSED_ARCHIVE_BYTES);
     let mut archive = Archive::new(limited_decoder);
