@@ -66,7 +66,10 @@ fn rejects_gzip_that_is_not_tar_archive() {
 fn committed_non_gzip_fixture_is_rejected() {
     let path = malformed_fixture_artifact_path("non-gzip-tgz");
 
-    let result = inspect_archive(&path);
+    let result = inspect_archive(
+        File::open(&path).expect("fixture file should be openable"),
+        &path,
+    );
 
     match result {
         Err(ArchiveError::ArchiveReadFailed {
@@ -80,7 +83,10 @@ fn committed_non_gzip_fixture_is_rejected() {
 fn committed_gzip_not_tar_fixture_is_rejected() {
     let path = malformed_fixture_artifact_path("gzip-not-tar");
 
-    let result = inspect_archive(&path);
+    let result = inspect_archive(
+        File::open(&path).expect("fixture file should be openable"),
+        &path,
+    );
 
     match result {
         Err(ArchiveError::ArchiveReadFailed {
@@ -94,7 +100,10 @@ fn committed_gzip_not_tar_fixture_is_rejected() {
 fn committed_empty_archive_fixture_is_rejected() {
     let path = malformed_fixture_artifact_path("empty-archive");
 
-    let result = inspect_archive(&path);
+    let result = inspect_archive(
+        File::open(&path).expect("fixture file should be openable"),
+        &path,
+    );
 
     assert_eq!(result, Err(ArchiveError::ArchiveIsEmpty(path)));
 }
@@ -103,7 +112,10 @@ fn committed_empty_archive_fixture_is_rejected() {
 fn committed_missing_package_json_fixture_is_rejected() {
     let path = malformed_fixture_artifact_path("missing-package-json");
 
-    let result = inspect_archive(&path);
+    let result = inspect_archive(
+        File::open(&path).expect("fixture file should be openable"),
+        &path,
+    );
 
     assert_eq!(result, Err(ArchiveError::PackageJsonMissing(path)));
 }
@@ -112,7 +124,10 @@ fn committed_missing_package_json_fixture_is_rejected() {
 fn committed_duplicate_archive_entry_fixture_is_rejected() {
     let path = malformed_fixture_artifact_path("duplicate-archive-entry");
 
-    let result = inspect_archive(&path);
+    let result = inspect_archive(
+        File::open(&path).expect("fixture file should be openable"),
+        &path,
+    );
 
     assert_eq!(
         result,
@@ -126,7 +141,10 @@ fn committed_duplicate_archive_entry_fixture_is_rejected() {
 fn committed_path_traversal_archive_entry_fixture_is_rejected() {
     let path = malformed_fixture_artifact_path("path-traversal-archive-entry");
 
-    let result = inspect_archive(&path);
+    let result = inspect_archive(
+        File::open(&path).expect("fixture file should be openable"),
+        &path,
+    );
 
     assert_eq!(
         result,
@@ -140,7 +158,10 @@ fn committed_path_traversal_archive_entry_fixture_is_rejected() {
 fn committed_unsupported_directory_entry_fixture_is_rejected() {
     let path = malformed_fixture_artifact_path("unsupported-directory-entry");
 
-    let result = inspect_archive(&path);
+    let result = inspect_archive(
+        File::open(&path).expect("fixture file should be openable"),
+        &path,
+    );
 
     assert_eq!(
         result,
@@ -558,7 +579,10 @@ fn inspects_archive_entries_and_package_json_bytes() {
         ],
     );
 
-    let result = inspect_archive(&path);
+    let result = inspect_archive(
+        File::open(&path).expect("fixture file should be openable"),
+        &path,
+    );
 
     remove_path_if_exists(&path);
 
