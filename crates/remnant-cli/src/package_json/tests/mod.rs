@@ -43,6 +43,10 @@ const MALFORMED_INVALID_JSON_FIXTURE: &[u8] =
     include_bytes!("../../../fixtures/malformed/invalid-json/package/package.json");
 const MALFORMED_INVALID_JSON_FIXTURE_METADATA: &[u8] =
     include_bytes!("../../../fixtures/malformed/invalid-json/fixture.json");
+const MALFORMED_DUPLICATE_JSON_KEYS_FIXTURE: &[u8] =
+    include_bytes!("../../../fixtures/malformed/duplicate-json-keys/package/package.json");
+const MALFORMED_DUPLICATE_JSON_KEYS_FIXTURE_METADATA: &[u8] =
+    include_bytes!("../../../fixtures/malformed/duplicate-json-keys/fixture.json");
 const MALFORMED_NAME_TOO_LONG_FIXTURE: &[u8] =
     include_bytes!("../../../fixtures/malformed/name-too-long/package/package.json");
 const MALFORMED_NAME_TOO_LONG_FIXTURE_METADATA: &[u8] =
@@ -165,6 +169,13 @@ fn rejects_invalid_json_fixture() {
         }
         other => panic!("expected JSON parse failure, got {other:?}"),
     }
+}
+
+#[test]
+fn rejects_duplicate_json_keys_fixture() {
+    let result = parse_package_json(MALFORMED_DUPLICATE_JSON_KEYS_FIXTURE);
+
+    assert_eq!(result, Err(PackageJsonError::DuplicateKeys));
 }
 
 #[test]
@@ -402,6 +413,24 @@ fn validates_invalid_json_fixture_metadata() {
 }
 
 #[test]
+fn validates_duplicate_json_keys_fixture_metadata() {
+    let metadata = parse_fixture_metadata(MALFORMED_DUPLICATE_JSON_KEYS_FIXTURE_METADATA);
+
+    assert_eq!(metadata["id"], "duplicate-json-keys");
+    assert_eq!(metadata["category"], "malformed");
+    assert_eq!(metadata["expected"]["package_json"], "fail");
+    assert_eq!(metadata["expected"]["package_json_error"], "DuplicateKeys");
+    assert_eq!(
+        metadata["expected"]["install_script_policy"],
+        "not_evaluated"
+    );
+    assert_eq!(metadata["expected"]["exit_code"], 1);
+    assert_eq!(metadata["safety"]["executes_code"], false);
+    assert_eq!(metadata["safety"]["network_access"], false);
+    assert_eq!(metadata["safety"]["host_persistence"], false);
+}
+
+#[test]
 fn validates_name_too_long_fixture_metadata() {
     let metadata = parse_fixture_metadata(MALFORMED_NAME_TOO_LONG_FIXTURE_METADATA);
 
@@ -493,6 +522,37 @@ fn rejects_malformed_json() {
         }
         other => panic!("expected JSON parse failure, got {other:?}"),
     }
+}
+
+#[test]
+fn rejects_package_json_with_duplicate_top_level_key() {
+    let result = parse_package_json(br#"{"name":"demo","version":"1.0.0","name":"shadow"}"#);
+
+    assert_eq!(result, Err(PackageJsonError::DuplicateKeys));
+}
+
+#[test]
+fn rejects_package_json_with_duplicate_version_key() {
+    let result = parse_package_json(br#"{"name":"demo","version":"1.0.0","version":"2.0.0"}"#);
+
+    assert_eq!(result, Err(PackageJsonError::DuplicateKeys));
+}
+
+#[test]
+fn accepts_package_json_without_duplicate_keys() {
+    let result = parse_package_json(br#"{"name":"demo","version":"1.0.0"}"#);
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn returns_json_parse_error_for_truncated_json_not_duplicate_keys() {
+    let result = parse_package_json(br#"{"name":"demo","version":"1.0.0""#);
+
+    assert!(matches!(
+        result,
+        Err(PackageJsonError::JsonParseFailed { .. })
+    ));
 }
 
 #[test]

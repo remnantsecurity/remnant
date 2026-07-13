@@ -6,6 +6,7 @@
 //! and required metadata fields.
 
 use serde_json::Value;
+use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
 
@@ -75,6 +76,13 @@ pub enum PackageJsonError {
 
     /// The JSON parsed successfully, but its top-level value was not an object.
     TopLevelIsNotObject,
+
+    /// The top-level object contains a duplicate key.
+    ///
+    /// Duplicate keys create a parser differential risk: serde_json keeps the last
+    /// value while other JSON parsers keep the first. Legitimate npm packages do not
+    /// contain duplicate top-level keys after registry normalization.
+    DuplicateKeys,
 
     /// The required `name` field was missing.
     NameMissing,
@@ -146,6 +154,9 @@ impl fmt::Display for PackageJsonError {
             }
             PackageJsonError::TopLevelIsNotObject => {
                 write!(f, "package.json top-level value must be an object")
+            }
+            PackageJsonError::DuplicateKeys => {
+                write!(f, "package.json top-level object contains a duplicate key")
             }
             PackageJsonError::NameMissing => {
                 write!(f, "package.json is missing required name field")
@@ -251,6 +262,8 @@ impl Error for PackageJsonError {}
 /// length limits. Optional lifecycle scripts and install hooks are detected
 /// from the `scripts` object without executing or interpreting script commands.
 pub fn parse_package_json(contents: &[u8]) -> Result<PackageMetadata, PackageJsonError> {
+    detect_duplicate_top_level_keys(contents)?;
+
     let value: Value =
         serde_json::from_slice(contents).map_err(|error| PackageJsonError::JsonParseFailed {
             line: error.line(),
@@ -306,6 +319,159 @@ pub fn parse_package_json(contents: &[u8]) -> Result<PackageMetadata, PackageJso
         optional_dependencies,
         peer_dependencies,
     })
+}
+
+fn detect_duplicate_top_level_keys(bytes: &[u8]) -> Result<(), PackageJsonError> {
+    let mut pos = skip_ws(bytes, 0);
+
+    if bytes.get(pos) != Some(&b'{') {
+        return Ok(());
+    }
+
+    pos += 1;
+    let mut seen: HashSet<Vec<u8>> = HashSet::new();
+
+    loop {
+        pos = skip_ws(bytes, pos);
+
+        match bytes.get(pos) {
+            Some(&b'}') => return Ok(()),
+            Some(&b'"') => {
+                pos += 1;
+            }
+            _ => return Ok(()),
+        }
+
+        let Some((key, next)) = read_json_string_bytes(bytes, pos) else {
+            return Ok(());
+        };
+        pos = next;
+
+        if !seen.insert(key) {
+            return Err(PackageJsonError::DuplicateKeys);
+        }
+
+        pos = skip_ws(bytes, pos);
+        if bytes.get(pos) != Some(&b':') {
+            return Ok(());
+        }
+
+        pos += 1;
+        pos = skip_ws(bytes, pos);
+
+        let Some(next) = skip_json_value(bytes, pos) else {
+            return Ok(());
+        };
+        pos = next;
+
+        pos = skip_ws(bytes, pos);
+        match bytes.get(pos) {
+            Some(&b',') => {
+                pos += 1;
+            }
+            Some(&b'}') => return Ok(()),
+            _ => return Ok(()),
+        }
+    }
+}
+
+fn skip_ws(bytes: &[u8], mut pos: usize) -> usize {
+    while matches!(bytes.get(pos), Some(b' ' | b'\t' | b'\r' | b'\n')) {
+        pos += 1;
+    }
+
+    pos
+}
+
+fn read_json_string_bytes(bytes: &[u8], mut pos: usize) -> Option<(Vec<u8>, usize)> {
+    let mut string_bytes = Vec::new();
+
+    while pos < bytes.len() {
+        match bytes[pos] {
+            b'\\' => {
+                string_bytes.push(bytes[pos]);
+                pos += 1;
+
+                let escaped_byte = *bytes.get(pos)?;
+                string_bytes.push(escaped_byte);
+                pos += 1;
+            }
+            b'"' => return Some((string_bytes, pos + 1)),
+            byte => {
+                string_bytes.push(byte);
+                pos += 1;
+            }
+        }
+    }
+
+    None
+}
+
+fn skip_json_string(bytes: &[u8], mut pos: usize) -> Option<usize> {
+    while pos < bytes.len() {
+        match bytes[pos] {
+            b'\\' => {
+                pos += 2;
+            }
+            b'"' => return Some(pos + 1),
+            _ => {
+                pos += 1;
+            }
+        }
+    }
+
+    None
+}
+
+fn skip_json_value(bytes: &[u8], mut pos: usize) -> Option<usize> {
+    match bytes.get(pos)? {
+        b'"' => {
+            pos += 1;
+            skip_json_string(bytes, pos)
+        }
+        b'{' | b'[' => {
+            let open = bytes[pos];
+            let close = if open == b'{' { b'}' } else { b']' };
+            let mut depth = 1usize;
+            pos += 1;
+
+            while pos < bytes.len() {
+                match bytes[pos] {
+                    b'"' => {
+                        pos += 1;
+                        pos = skip_json_string(bytes, pos)?;
+                    }
+                    byte if byte == open => {
+                        depth += 1;
+                        pos += 1;
+                    }
+                    byte if byte == close => {
+                        depth -= 1;
+                        pos += 1;
+
+                        if depth == 0 {
+                            return Some(pos);
+                        }
+                    }
+                    _ => {
+                        pos += 1;
+                    }
+                }
+            }
+
+            None
+        }
+        _ => {
+            while !matches!(
+                bytes.get(pos),
+                None | Some(b',' | b'}' | b']' | b' ' | b'\t' | b'\r' | b'\n')
+            ) {
+                pos += 1;
+            }
+
+            Some(pos)
+        }
+    }
 }
 
 fn parse_required_metadata_string(
