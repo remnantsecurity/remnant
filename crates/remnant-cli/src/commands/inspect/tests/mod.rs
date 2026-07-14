@@ -2,7 +2,7 @@ mod setup;
 
 use super::*;
 use crate::archive::{ArchiveEntry, ArchiveError, ArchiveInspection};
-use crate::package_json::PackageMetadata;
+use crate::package_json::{PackageJsonError, PackageMetadata};
 use crate::policy::{INSTALL_SCRIPTS_DISALLOWED_RULE_ID, PolicyFinding, PolicyResult};
 use setup::*;
 use std::fs::{self, File};
@@ -310,6 +310,20 @@ fn builds_json_report_for_package_json_error() {
     assert_eq!(
         report["error"]["message"],
         "package.json top-level value must be an object"
+    );
+}
+
+#[test]
+fn builds_json_report_for_duplicate_keys_error() {
+    let error = InspectError::PackageJson(PackageJsonError::DuplicateKeys);
+
+    let report = build_json_error_report(&error);
+
+    assert_eq!(report["status"], "error");
+    assert_eq!(report["error"]["kind"], "package_json");
+    assert_eq!(
+        report["error"]["message"],
+        "package.json top-level object contains a duplicate key"
     );
 }
 
