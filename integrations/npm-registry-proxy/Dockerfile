@@ -1,4 +1,4 @@
-FROM rust:1.87.0-slim AS builder
+FROM rust:1.95.0-slim AS builder
 
 RUN rustup target add x86_64-unknown-linux-musl \
     && apt-get update \
