@@ -442,6 +442,9 @@ fn machine_package_json_error_message(error: &PackageJsonError) -> String {
         PackageJsonError::TopLevelIsNotObject => {
             "package.json top-level value must be an object".to_string()
         }
+        PackageJsonError::DuplicateKeys => {
+            "package.json top-level object contains a duplicate key".to_string()
+        }
         PackageJsonError::NameMissing => "package.json is missing required name field".to_string(),
         PackageJsonError::NameIsEmpty => "package.json name field must not be empty".to_string(),
         PackageJsonError::NameIsTooLong { max_bytes } => {
