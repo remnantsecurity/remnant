@@ -1,4 +1,4 @@
-FROM rust:1.87.0-slim AS builder
+FROM rust:1.95.0-slim AS builder
 
 RUN rustup target add x86_64-unknown-linux-musl \
     && apt-get update \
@@ -8,6 +8,7 @@ RUN rustup target add x86_64-unknown-linux-musl \
 WORKDIR /build
 
 # Build remnant CLI (root workspace: crates/remnant-cli).
+COPY rust-toolchain.toml ./
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
 RUN cargo build --release --locked --target x86_64-unknown-linux-musl
