@@ -607,6 +607,20 @@ async fn block_response_truncates_finding_ids_to_two_kibibytes() {
     assert_ne!(body["findingIds"], json!([]));
 }
 
+#[tokio::test]
+async fn health_route_returns_ok() {
+    let (upstream_url, _upstream_server) = spawn_upstream_https_server(vec![]).await;
+    let (proxy_base_url, _proxy_server) = spawn_proxy_server(&upstream_url).await;
+
+    let response = reqwest::get(format!("{proxy_base_url}/-/ping"))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = serde_json::from_slice::<Value>(&response.bytes().await.unwrap()).unwrap();
+    assert_eq!(body, json!({}));
+}
+
 async fn fetch_rewritten_tarball_url(proxy_base_url: &str, package_name: &str) -> String {
     let metadata_response = reqwest::Client::new()
         .get(format!("{proxy_base_url}/{package_name}"))
