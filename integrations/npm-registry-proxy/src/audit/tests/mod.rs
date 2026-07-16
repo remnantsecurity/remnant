@@ -23,7 +23,6 @@ fn format_audit_record_serializes_all_required_fields() {
     );
     assert_eq!(body["remnantVersion"], "remnant 0.1.1");
     assert_eq!(body["responseCategory"], "admitted");
-    assert_eq!(body["policyStatus"], "admitted");
     assert_eq!(body["findingIds"], serde_json::json!([]));
     assert_eq!(body["durationMs"], 42);
     assert_eq!(body["upstreamRegistryHost"], "registry.npmjs.org");
@@ -44,7 +43,7 @@ fn format_audit_record_serializes_finding_ids() {
         body["findingIds"],
         serde_json::json!(["install-scripts-disallowed"])
     );
-    assert_eq!(body["policyStatus"], "blocked_policy");
+    assert_eq!(body["responseCategory"], "blocked_policy");
 }
 
 #[test]
@@ -59,6 +58,15 @@ fn format_audit_record_omits_optional_fields_when_none() {
 
     assert!(body.get("upstreamRegistryHost").is_none());
     assert!(body.get("tarballByteLength").is_none());
+}
+
+#[test]
+fn format_audit_record_omits_policy_status() {
+    let record = audit_record_with_defaults();
+
+    let body = serde_json::from_str::<Value>(&format_audit_record(&record)).unwrap();
+
+    assert!(body.get("policyStatus").is_none());
 }
 
 #[test]

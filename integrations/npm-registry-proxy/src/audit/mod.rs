@@ -41,10 +41,6 @@ pub fn format_audit_record(record: &AuditRecord) -> String {
         String::from("responseCategory"),
         json!(record.response_category),
     );
-    body.insert(
-        String::from("policyStatus"),
-        json!(record.response_category),
-    );
     body.insert(String::from("findingIds"), json!(record.finding_ids));
     body.insert(String::from("durationMs"), json!(record.duration_ms));
 
