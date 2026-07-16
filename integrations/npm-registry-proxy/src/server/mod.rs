@@ -27,6 +27,10 @@ use crate::upstream::UpstreamFetcher;
 
 const ARTIFACT_KEY_HEX_LENGTH: usize = 64;
 const MAX_BLOCK_RESPONSE_BYTES: usize = 2 * 1024;
+const INSTALL_SCRIPTS_DISALLOWED_FINDING_ID: &str = "install-scripts-disallowed";
+const LOCAL_DEPENDENCY_SPECIFIER_DISALLOWED_FINDING_ID: &str =
+    "local-dependency-specifier-disallowed";
+const SUSPICIOUS_FILE_DETECTED_FINDING_ID: &str = "suspicious-file-detected";
 
 #[derive(Clone)]
 pub(crate) struct AppState {
@@ -105,7 +109,7 @@ async fn handle_metadata_request(
             return build_block_response(
                 &request_id,
                 ResponseCategory::BlockedParse,
-                "package name is not valid",
+                "package name is not valid".to_string(),
                 vec![],
             );
         }
@@ -121,7 +125,7 @@ async fn handle_metadata_request(
             return build_block_response(
                 &request_id,
                 ResponseCategory::BlockedFetch,
-                "upstream registry fetch failed",
+                "upstream registry fetch failed".to_string(),
                 vec![],
             );
         }
@@ -135,7 +139,7 @@ async fn handle_metadata_request(
             return build_block_response(
                 &request_id,
                 ResponseCategory::BlockedParse,
-                "package metadata could not be parsed",
+                "package metadata could not be parsed".to_string(),
                 vec![],
             );
         }
@@ -182,7 +186,7 @@ async fn handle_tarball_request(
             return build_block_response(
                 &request_id,
                 ResponseCategory::BlockedFetch,
-                "upstream tarball fetch failed",
+                "upstream tarball fetch failed".to_string(),
                 vec![],
             );
         }
@@ -214,7 +218,7 @@ async fn handle_tarball_request(
         return build_block_response(
             &request_id,
             ResponseCategory::BlockedIntegrity,
-            "artifact integrity verification failed",
+            "artifact integrity verification failed".to_string(),
             vec![],
         );
     }
@@ -244,7 +248,7 @@ async fn handle_tarball_request(
         return build_block_response(
             &request_id,
             ResponseCategory::Error,
-            "artifact could not be written for inspection",
+            "artifact could not be written for inspection".to_string(),
             vec![],
         );
     }
@@ -283,16 +287,23 @@ async fn handle_tarball_request(
             );
             response
         }
-        ResponseCategory::BlockedPolicy => build_block_response(
-            &request_id,
-            ResponseCategory::BlockedPolicy,
-            "artifact failed policy checks",
-            outcome.finding_ids,
-        ),
+        ResponseCategory::BlockedPolicy => {
+            let error = format_policy_block_message(
+                &mapping.package_name,
+                &mapping.version,
+                &outcome.finding_ids,
+            );
+            build_block_response(
+                &request_id,
+                ResponseCategory::BlockedPolicy,
+                error,
+                outcome.finding_ids,
+            )
+        }
         ResponseCategory::BlockedParse => build_block_response(
             &request_id,
             ResponseCategory::BlockedParse,
-            "artifact could not be inspected",
+            "artifact could not be inspected".to_string(),
             vec![],
         ),
         ResponseCategory::BlockedFetch
@@ -300,7 +311,7 @@ async fn handle_tarball_request(
         | ResponseCategory::Error => build_block_response(
             &request_id,
             ResponseCategory::Error,
-            "artifact inspection failed",
+            "artifact inspection failed".to_string(),
             vec![],
         ),
     }
@@ -326,11 +337,11 @@ fn valid_artifact_key_from_filename(filename: &str) -> Option<&str> {
 fn build_block_response(
     request_id: &str,
     category: ResponseCategory,
-    error: &'static str,
+    error: String,
     finding_ids: Vec<String>,
 ) -> Response<Body> {
     let finding_ids =
-        finding_ids_within_block_response_limit(&category, error, request_id, finding_ids);
+        finding_ids_within_block_response_limit(&category, &error, request_id, finding_ids);
     let body = Json(json!({
         "error": error,
         "category": response_category_name(&category),
@@ -343,7 +354,7 @@ fn build_block_response(
 
 fn finding_ids_within_block_response_limit(
     category: &ResponseCategory,
-    error: &'static str,
+    error: &str,
     request_id: &str,
     finding_ids: Vec<String>,
 ) -> Vec<String> {
@@ -363,6 +374,32 @@ fn finding_ids_within_block_response_limit(
     capped_finding_ids
 }
 
+fn finding_id_description(finding_id: &str) -> &str {
+    match finding_id {
+        INSTALL_SCRIPTS_DISALLOWED_FINDING_ID => "package declares install hooks",
+        LOCAL_DEPENDENCY_SPECIFIER_DISALLOWED_FINDING_ID => {
+            "package declares local dependency specifiers"
+        }
+        SUSPICIOUS_FILE_DETECTED_FINDING_ID => "package contains suspicious files",
+        _ => finding_id,
+    }
+}
+
+fn format_policy_block_message(
+    package_name: &str,
+    version: &str,
+    finding_ids: &[String],
+) -> String {
+    let descriptions = finding_ids
+        .iter()
+        .map(|finding_id| finding_id_description(finding_id))
+        .collect::<Vec<_>>()
+        .join("; ");
+    let ids = finding_ids.join(", ");
+
+    format!("{package_name}@{version} blocked: {descriptions} [findingID: {ids}]")
+}
+
 fn integrity_status_str(status: &IntegrityStatus) -> &'static str {
     match status {
         IntegrityStatus::Verified => "verified",
@@ -374,7 +411,7 @@ fn integrity_status_str(status: &IntegrityStatus) -> &'static str {
 
 fn block_response_body_len(
     category: &ResponseCategory,
-    error: &'static str,
+    error: &str,
     request_id: &str,
     finding_ids: &[String],
 ) -> usize {

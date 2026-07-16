@@ -62,6 +62,49 @@ fn response_category_status_panics_for_admitted() {
 }
 
 #[test]
+fn finding_id_description_returns_known_description_for_install_scripts_disallowed() {
+    assert_eq!(
+        super::finding_id_description("install-scripts-disallowed"),
+        "package declares install hooks"
+    );
+}
+
+#[test]
+fn finding_id_description_returns_raw_id_for_unrecognized_finding_id() {
+    assert_eq!(
+        super::finding_id_description("some-future-rule-id"),
+        "some-future-rule-id"
+    );
+}
+
+#[test]
+fn format_policy_block_message_formats_single_finding() {
+    assert_eq!(
+        super::format_policy_block_message(
+            "esbuild",
+            "0.28.1",
+            &["install-scripts-disallowed".to_string()]
+        ),
+        "esbuild@0.28.1 blocked: package declares install hooks [findingID: install-scripts-disallowed]"
+    );
+}
+
+#[test]
+fn format_policy_block_message_formats_multiple_findings() {
+    assert_eq!(
+        super::format_policy_block_message(
+            "demo",
+            "1.0.0",
+            &[
+                "install-scripts-disallowed".to_string(),
+                "suspicious-file-detected".to_string()
+            ]
+        ),
+        "demo@1.0.0 blocked: package declares install hooks; package contains suspicious files [findingID: install-scripts-disallowed, suspicious-file-detected]"
+    );
+}
+
+#[test]
 fn valid_artifact_key_from_filename_returns_key_for_lowercase_hex_filename() {
     let artifact_key = "a".repeat(64);
     let filename = format!("{artifact_key}.tgz");
@@ -470,10 +513,9 @@ async fn tarball_route_returns_403_for_blocked_policy_artifact() {
         body["findingIds"],
         serde_json::json!(["install-scripts-disallowed"])
     );
-    assert!(
-        body["error"]
-            .as_str()
-            .is_some_and(|value| !value.is_empty())
+    assert_eq!(
+        body["error"],
+        "install-script-postinstall@1.0.0 blocked: package declares install hooks [findingID: install-scripts-disallowed]"
     );
     assert!(
         body["requestId"]
@@ -590,7 +632,7 @@ async fn block_response_truncates_finding_ids_to_two_kibibytes() {
     let response = super::build_block_response(
         "test-request-id",
         ResponseCategory::BlockedPolicy,
-        "artifact failed policy checks",
+        "artifact failed policy checks".to_string(),
         finding_ids,
     );
 
