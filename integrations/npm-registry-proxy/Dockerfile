@@ -21,6 +21,13 @@ RUN cargo build --release --locked \
 
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:aef9602f8710ec12bde19d593fed1f76c708531bb7aba205110f1029786ead7b
 
+# Baked in at build time from the CI workflow's github.sha - never set this via
+# fly.toml or a Fly runtime secret. The whole point of this value is that it is
+# immutably tied to what was actually built into this image, not a
+# runtime-configurable knob that could drift from reality.
+ARG GIT_SHA
+ENV REMNANT_BUILD_COMMIT_SHA=$GIT_SHA
+
 ENV PATH=/usr/local/bin:/usr/bin:/bin
 
 COPY --from=builder \

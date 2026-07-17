@@ -24,6 +24,14 @@ fn capture_remnant_version() -> String {
         .unwrap_or_else(|| String::from("unknown"))
 }
 
+fn capture_commit_sha() -> String {
+    std::env::var("REMNANT_BUILD_COMMIT_SHA")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| String::from("unknown"))
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     let config = match config::load_proxy_config() {
@@ -44,7 +52,8 @@ async fn main() -> ExitCode {
     };
 
     let remnant_version = capture_remnant_version();
-    let state = AppState::new(fetcher, &config.proxy_origin, remnant_version);
+    let commit_sha = capture_commit_sha();
+    let state = AppState::new(fetcher, &config.proxy_origin, remnant_version, commit_sha);
     let app = build_router(state);
 
     let listener = match tokio::net::TcpListener::bind(&config.listen_addr).await {
