@@ -663,6 +663,26 @@ async fn health_route_returns_ok() {
     assert_eq!(body, json!({}));
 }
 
+#[tokio::test]
+async fn version_route_returns_remnant_version_and_commit_sha() {
+    let (upstream_url, _upstream_server) = spawn_upstream_https_server(vec![]).await;
+    let (proxy_base_url, _proxy_server) = spawn_proxy_server(&upstream_url).await;
+
+    let response = reqwest::get(format!("{proxy_base_url}/-/version"))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = serde_json::from_slice::<Value>(&response.bytes().await.unwrap()).unwrap();
+    assert_eq!(
+        body,
+        json!({
+            "remnantVersion": "test-version",
+            "commitSha": "test-commit-sha",
+        })
+    );
+}
+
 async fn fetch_rewritten_tarball_url(proxy_base_url: &str, package_name: &str) -> String {
     let metadata_response = reqwest::Client::new()
         .get(format!("{proxy_base_url}/{package_name}"))

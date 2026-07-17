@@ -38,6 +38,7 @@ pub(crate) struct AppState {
     artifact_mapping: Arc<RwLock<HashMap<String, ArtifactMapping>>>,
     proxy_origin: String,
     remnant_version: String,
+    commit_sha: String,
     #[cfg(test)]
     audit_sink: Option<tokio::sync::mpsc::UnboundedSender<String>>,
 }
@@ -47,12 +48,14 @@ impl AppState {
         fetcher: UpstreamFetcher,
         proxy_origin: impl Into<String>,
         remnant_version: impl Into<String>,
+        commit_sha: impl Into<String>,
     ) -> Self {
         Self {
             fetcher: Arc::new(fetcher),
             artifact_mapping: Arc::new(RwLock::new(HashMap::new())),
             proxy_origin: proxy_origin.into(),
             remnant_version: remnant_version.into(),
+            commit_sha: commit_sha.into(),
             #[cfg(test)]
             audit_sink: None,
         }
@@ -70,6 +73,7 @@ impl AppState {
 pub(crate) fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/-/ping", get(handle_health_request))
+        .route("/-/version", get(handle_version_request))
         .route("/remnant/tarballs/{filename}", get(handle_tarball_request))
         // Scoped package names (@scope/name) must be percent-encoded by the client
         // as a single path segment (@scope%2Fname). An unencoded /@scope/name request
@@ -80,6 +84,14 @@ pub(crate) fn build_router(state: AppState) -> Router {
 
 async fn handle_health_request() -> Response<Body> {
     response_with_json_content_type(StatusCode::OK, Body::from("{}"))
+}
+
+async fn handle_version_request(State(state): State<AppState>) -> Response<Body> {
+    let body = json!({
+        "remnantVersion": state.remnant_version,
+        "commitSha": state.commit_sha,
+    });
+    response_with_json_content_type(StatusCode::OK, Body::from(body.to_string()))
 }
 
 struct TempFile {

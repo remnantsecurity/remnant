@@ -21,7 +21,12 @@ pub(super) async fn spawn_proxy_server(
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let proxy_origin = format!("http://localhost:{port}");
-    let state = AppState::new(fetcher, proxy_origin, String::from("test-version"));
+    let state = AppState::new(
+        fetcher,
+        proxy_origin,
+        String::from("test-version"),
+        String::from("test-commit-sha"),
+    );
 
     let server_handle = tokio::spawn(async move {
         axum::serve(listener, build_router(state)).await.unwrap();
@@ -43,8 +48,13 @@ pub(super) async fn spawn_proxy_server_with_audit_sink(
     let port = listener.local_addr().unwrap().port();
     let proxy_origin = format!("http://localhost:{port}");
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-    let state =
-        AppState::new(fetcher, proxy_origin, String::from("test-version")).with_audit_sink(tx);
+    let state = AppState::new(
+        fetcher,
+        proxy_origin,
+        String::from("test-version"),
+        String::from("test-commit-sha"),
+    )
+    .with_audit_sink(tx);
 
     let server_handle = tokio::spawn(async move {
         axum::serve(listener, build_router(state)).await.unwrap();

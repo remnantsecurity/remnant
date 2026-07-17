@@ -38,13 +38,11 @@ jobs:
         with:
           context: .
           file: integrations/npm-registry-proxy/Dockerfile
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           push: true
           tags: |
             ghcr.io/remnantsecurity/npm-registry-proxy:latest
             ghcr.io/remnantsecurity/npm-registry-proxy:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-# After the first push, make the GHCR package public in the GitHub UI:
-# remnantsecurity org -> Packages -> npm-registry-proxy -> Package settings
-# -> Change visibility -> Public. Fly.io pulls this image without credentials.
