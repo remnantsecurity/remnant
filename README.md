@@ -132,6 +132,32 @@ Replace `v0.1.0` with the release tag you intend to trust. Pinning to a full com
 
 The action preserves Remnant's deterministic exit-code behavior: `0` for pass, `1` for inspection or parsing errors, and `2` for policy failure. GitHub Actions treats non-zero exit codes as failed steps by default.
 
+## Hosted Registry Proxy
+
+Remnant also runs as an npm registry proxy at `https://registry.remnantsecurity.dev`, gating package installation before artifacts reach a developer's machine. The proxy fetches from `registry.npmjs.org`, runs the same deterministic inspection and policy engine documented above against every requested tarball, and blocks admission on policy failure — the same trust model as the CLI, applied at install time instead of after the fact.
+
+Point npm at it (for example, in `.npmrc`) to gate installs through Remnant. Packages that fail policy are rejected with an explainable error, for example:
+
+```
+npm error 403 403 Forbidden - GET https://registry.remnantsecurity.dev/... - esbuild@0.28.1 blocked: package declares install hooks [findingID: install-scripts-disallowed]
+```
+
+### Verifying the Proxy
+
+The proxy's source, parser, and policy engine are open source, but that alone doesn't prove the running service matches what's published here. Every deployed image is independently verifiable against this repository — no account or special access required:
+
+1. Ask the running proxy what commit it's built from:
+   ```bash
+   curl https://registry.remnantsecurity.dev/-/version
+   # {"commitSha":"<sha>","remnantVersion":"remnant x.y.z"}
+   ```
+2. Verify that commit's build provenance:
+   ```bash
+   gh attestation verify oci://ghcr.io/remnantsecurity/npm-registry-proxy:<commitSha> --owner remnantsecurity
+   ```
+   This confirms the published image was built by this repository's GitHub Actions workflow from that exact commit, signed and logged via Sigstore. `/-/version` is a self-reported convenience for locating the right commit — this step is what actually proves provenance, independent of what the proxy claims about itself.
+3. Read the commit directly at `https://github.com/remnantsecurity/remnant/commit/<commitSha>`.
+
 ## Example
 
 `remnant inspect` never extracts an archive to evaluate it — every entry path is validated up front, before package metadata or policy is even evaluated.
