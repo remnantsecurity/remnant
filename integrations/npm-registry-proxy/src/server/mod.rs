@@ -21,6 +21,7 @@ use crate::artifact::{
 #[cfg(test)]
 use crate::audit::format_audit_record;
 use crate::audit::{AuditRecord, write_audit_record};
+use crate::config::ProxyMode;
 use crate::inspection::run_inspection;
 use crate::package_name::ValidatedPackageName;
 use crate::upstream::UpstreamFetcher;
@@ -39,6 +40,7 @@ pub(crate) struct AppState {
     proxy_origin: String,
     remnant_version: String,
     commit_sha: String,
+    mode: ProxyMode,
     #[cfg(test)]
     audit_sink: Option<tokio::sync::mpsc::UnboundedSender<String>>,
 }
@@ -49,6 +51,7 @@ impl AppState {
         proxy_origin: impl Into<String>,
         remnant_version: impl Into<String>,
         commit_sha: impl Into<String>,
+        mode: ProxyMode,
     ) -> Self {
         Self {
             fetcher: Arc::new(fetcher),
@@ -56,6 +59,7 @@ impl AppState {
             proxy_origin: proxy_origin.into(),
             remnant_version: remnant_version.into(),
             commit_sha: commit_sha.into(),
+            mode,
             #[cfg(test)]
             audit_sink: None,
         }
@@ -224,6 +228,8 @@ async fn handle_tarball_request(
             response_category: String::from("blocked_integrity"),
             finding_ids: vec![],
             duration_ms,
+            mode: state.mode.as_str().to_string(),
+            enforced: true,
             upstream_registry_host: Some(upstream_host),
             tarball_byte_length: Some(tarball_byte_length),
         });
@@ -254,6 +260,8 @@ async fn handle_tarball_request(
             response_category: String::from("error"),
             finding_ids: vec![],
             duration_ms,
+            mode: state.mode.as_str().to_string(),
+            enforced: true,
             upstream_registry_host: Some(upstream_host),
             tarball_byte_length: Some(tarball_byte_length),
         });
@@ -267,6 +275,8 @@ async fn handle_tarball_request(
 
     let outcome = run_inspection(&temp_path).await;
     let duration_ms = request_start.elapsed().as_millis() as u64;
+    let enforced =
+        !(state.mode == ProxyMode::Audit && outcome.category == ResponseCategory::BlockedPolicy);
 
     let post_inspection_record = AuditRecord {
         timestamp,
@@ -280,6 +290,8 @@ async fn handle_tarball_request(
         response_category: response_category_name(&outcome.category).to_string(),
         finding_ids: outcome.finding_ids.clone(),
         duration_ms,
+        mode: state.mode.as_str().to_string(),
+        enforced,
         upstream_registry_host: Some(upstream_host),
         tarball_byte_length: Some(tarball_byte_length),
     };
@@ -290,14 +302,9 @@ async fn handle_tarball_request(
     }
 
     match outcome.category {
-        ResponseCategory::Admitted => {
-            let mut response = Response::new(Body::from(tarball_bytes));
-            *response.status_mut() = StatusCode::OK;
-            response.headers_mut().insert(
-                CONTENT_TYPE,
-                HeaderValue::from_static("application/octet-stream"),
-            );
-            response
+        ResponseCategory::Admitted => tarball_response(tarball_bytes),
+        ResponseCategory::BlockedPolicy if state.mode == ProxyMode::Audit => {
+            tarball_response(tarball_bytes)
         }
         ResponseCategory::BlockedPolicy => {
             let error = format_policy_block_message(
@@ -327,6 +334,16 @@ async fn handle_tarball_request(
             vec![],
         ),
     }
+}
+
+fn tarball_response(tarball_bytes: Vec<u8>) -> Response<Body> {
+    let mut response = Response::new(Body::from(tarball_bytes));
+    *response.status_mut() = StatusCode::OK;
+    response.headers_mut().insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("application/octet-stream"),
+    );
+    response
 }
 
 fn valid_artifact_key_from_filename(filename: &str) -> Option<&str> {

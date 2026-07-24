@@ -42,6 +42,7 @@ async fn main() -> ExitCode {
         }
     };
     eprintln!("proxy origin: {}", config.proxy_origin);
+    eprintln!("proxy mode: {}", config.mode.as_str());
 
     let fetcher = match UpstreamFetcher::from_env() {
         Ok(fetcher) => fetcher,
@@ -53,7 +54,13 @@ async fn main() -> ExitCode {
 
     let remnant_version = capture_remnant_version();
     let commit_sha = capture_commit_sha();
-    let state = AppState::new(fetcher, &config.proxy_origin, remnant_version, commit_sha);
+    let state = AppState::new(
+        fetcher,
+        &config.proxy_origin,
+        remnant_version,
+        commit_sha,
+        config.mode,
+    );
     let app = build_router(state);
 
     let listener = match tokio::net::TcpListener::bind(&config.listen_addr).await {

@@ -1,16 +1,35 @@
 use std::env;
 
 const DEFAULT_PROXY_LISTEN_ADDR: &str = "127.0.0.1:4873";
+const DEFAULT_PROXY_MODE: &str = "enforce";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProxyMode {
+    Enforce,
+    Audit,
+}
+
+impl ProxyMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ProxyMode::Enforce => "enforce",
+            ProxyMode::Audit => "audit",
+        }
+    }
+}
 
 pub struct ProxyConfig {
     pub proxy_origin: String,
     pub listen_addr: String,
+    pub mode: ProxyMode,
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug)]
 pub enum ConfigError {
     ProxyOriginMissing,
     ProxyOriginNotHttps { origin: String },
+    ProxyModeInvalid { value: String },
 }
 
 impl std::fmt::Display for ConfigError {
@@ -26,6 +45,10 @@ impl std::fmt::Display for ConfigError {
                 "REMNANT_PROXY_ORIGIN must use https:// scheme, got: {origin}; \
                  set REMNANT_ALLOW_INSECURE_ORIGIN=1 to allow http:// for local development only"
             ),
+            ConfigError::ProxyModeInvalid { value } => write!(
+                f,
+                "REMNANT_PROXY_MODE must be \"enforce\" or \"audit\", got: {value}"
+            ),
         }
     }
 }
@@ -39,8 +62,10 @@ pub fn load_proxy_config() -> Result<ProxyConfig, ConfigError> {
     let allow_insecure_origin = env::var("REMNANT_ALLOW_INSECURE_ORIGIN")
         .map(|value| value == "1")
         .unwrap_or(false);
+    let mode_raw =
+        env::var("REMNANT_PROXY_MODE").unwrap_or_else(|_| DEFAULT_PROXY_MODE.to_string());
 
-    validate_proxy_config(origin, listen_addr, allow_insecure_origin)
+    validate_proxy_config(origin, listen_addr, allow_insecure_origin, mode_raw)
 }
 
 /// Pure validation helper - testable without touching env vars.
@@ -48,14 +73,22 @@ pub(crate) fn validate_proxy_config(
     origin: String,
     listen_addr: String,
     allow_insecure_origin: bool,
+    mode_raw: String,
 ) -> Result<ProxyConfig, ConfigError> {
     if !origin.starts_with("https://") && !allow_insecure_origin {
         return Err(ConfigError::ProxyOriginNotHttps { origin });
     }
 
+    let mode = match mode_raw.as_str() {
+        "enforce" => ProxyMode::Enforce,
+        "audit" => ProxyMode::Audit,
+        _ => return Err(ConfigError::ProxyModeInvalid { value: mode_raw }),
+    };
+
     Ok(ProxyConfig {
         proxy_origin: origin,
         listen_addr,
+        mode,
     })
 }
 

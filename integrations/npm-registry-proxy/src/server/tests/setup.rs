@@ -10,6 +10,7 @@ use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 
+use crate::config::ProxyMode;
 use crate::server::{AppState, build_router};
 use crate::upstream::UpstreamFetcher;
 
@@ -26,6 +27,7 @@ pub(super) async fn spawn_proxy_server(
         proxy_origin,
         String::from("test-version"),
         String::from("test-commit-sha"),
+        ProxyMode::Enforce,
     );
 
     let server_handle = tokio::spawn(async move {
@@ -53,6 +55,61 @@ pub(super) async fn spawn_proxy_server_with_audit_sink(
         proxy_origin,
         String::from("test-version"),
         String::from("test-commit-sha"),
+        ProxyMode::Enforce,
+    )
+    .with_audit_sink(tx);
+
+    let server_handle = tokio::spawn(async move {
+        axum::serve(listener, build_router(state)).await.unwrap();
+    });
+
+    (format!("http://127.0.0.1:{port}"), server_handle, rx)
+}
+
+pub(super) async fn spawn_proxy_server_with_mode(
+    upstream_registry_url: &str,
+    mode: ProxyMode,
+) -> (String, tokio::task::JoinHandle<()>) {
+    let fetcher =
+        UpstreamFetcher::new_with_danger_certs_for_testing(upstream_registry_url).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let proxy_origin = format!("http://localhost:{port}");
+    let state = AppState::new(
+        fetcher,
+        proxy_origin,
+        String::from("test-version"),
+        String::from("test-commit-sha"),
+        mode,
+    );
+
+    let server_handle = tokio::spawn(async move {
+        axum::serve(listener, build_router(state)).await.unwrap();
+    });
+
+    (format!("http://127.0.0.1:{port}"), server_handle)
+}
+
+pub(super) async fn spawn_proxy_server_with_mode_and_audit_sink(
+    upstream_registry_url: &str,
+    mode: ProxyMode,
+) -> (
+    String,
+    tokio::task::JoinHandle<()>,
+    tokio::sync::mpsc::UnboundedReceiver<String>,
+) {
+    let fetcher =
+        UpstreamFetcher::new_with_danger_certs_for_testing(upstream_registry_url).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let proxy_origin = format!("http://localhost:{port}");
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let state = AppState::new(
+        fetcher,
+        proxy_origin,
+        String::from("test-version"),
+        String::from("test-commit-sha"),
+        mode,
     )
     .with_audit_sink(tx);
 

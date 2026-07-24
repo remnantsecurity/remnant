@@ -12,6 +12,8 @@ pub struct AuditRecord {
     pub response_category: String,
     pub finding_ids: Vec<String>,
     pub duration_ms: u64,
+    pub mode: String,
+    pub enforced: bool,
     pub upstream_registry_host: Option<String>,
     pub tarball_byte_length: Option<u64>,
 }
@@ -43,6 +45,8 @@ pub fn format_audit_record(record: &AuditRecord) -> String {
     );
     body.insert(String::from("findingIds"), json!(record.finding_ids));
     body.insert(String::from("durationMs"), json!(record.duration_ms));
+    body.insert(String::from("mode"), json!(record.mode));
+    body.insert(String::from("enforced"), json!(record.enforced));
 
     if let Some(upstream_registry_host) = &record.upstream_registry_host {
         body.insert(
