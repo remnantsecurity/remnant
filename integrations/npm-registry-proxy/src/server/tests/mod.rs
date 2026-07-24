@@ -8,10 +8,12 @@ use serde_json::json;
 use sha2::{Digest, Sha512};
 
 use crate::admission::ResponseCategory;
+use crate::config::ProxyMode;
 
 use setup::{
     build_tgz_from_package_json, packument_bytes, read_fixture_package_json, spawn_proxy_server,
-    spawn_proxy_server_with_audit_sink, spawn_upstream_https_server,
+    spawn_proxy_server_with_audit_sink, spawn_proxy_server_with_mode,
+    spawn_proxy_server_with_mode_and_audit_sink, spawn_upstream_https_server,
     spawn_upstream_https_server_for_packument_and_tarball,
 };
 
@@ -473,6 +475,8 @@ async fn tarball_route_emits_audit_record_for_admitted_artifact() {
             .is_some_and(|key| key.len() == 64)
     );
     assert!(record["durationMs"].is_number());
+    assert_eq!(record["mode"], "enforce");
+    assert_eq!(record["enforced"], true);
 
     upstream_server.await.unwrap();
     proxy_server.abort();
@@ -522,6 +526,99 @@ async fn tarball_route_returns_403_for_blocked_policy_artifact() {
             .as_str()
             .is_some_and(|value| !value.is_empty())
     );
+
+    upstream_server.await.unwrap();
+    proxy_server.abort();
+}
+
+#[tokio::test]
+async fn tarball_route_serves_blocked_policy_artifact_in_audit_mode() {
+    let package_json = read_fixture_package_json("suspicious", "install-script-postinstall");
+    let tgz_bytes = build_tgz_from_package_json(&package_json);
+    let integrity = sha512_integrity_for(&tgz_bytes);
+    let upstream_tarball_path =
+        "/install-script-postinstall/-/install-script-postinstall-1.0.0.tgz";
+    let (upstream_registry_url, upstream_server) =
+        spawn_upstream_https_server_for_packument_and_tarball(
+            "install-script-postinstall",
+            "1.0.0",
+            upstream_tarball_path,
+            Some(&integrity),
+            tgz_bytes.clone(),
+        )
+        .await;
+    let (proxy_base_url, proxy_server, mut audit_rx) =
+        spawn_proxy_server_with_mode_and_audit_sink(&upstream_registry_url, ProxyMode::Audit).await;
+
+    let rewritten_tarball =
+        fetch_rewritten_tarball_url(&proxy_base_url, "install-script-postinstall").await;
+    let response = reqwest::Client::new()
+        .get(rewritten_tarball)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "application/octet-stream"
+    );
+    assert_eq!(response.bytes().await.unwrap(), tgz_bytes);
+
+    let record_line = tokio::time::timeout(std::time::Duration::from_secs(5), audit_rx.recv())
+        .await
+        .expect("audit record should be received within 5 seconds")
+        .expect("audit channel should not be closed before record is sent");
+    let record = serde_json::from_str::<Value>(&record_line).unwrap();
+
+    assert_eq!(record["responseCategory"], "blocked_policy");
+    assert_eq!(
+        record["findingIds"],
+        serde_json::json!(["install-scripts-disallowed"])
+    );
+    assert_eq!(record["mode"], "audit");
+    assert_eq!(record["enforced"], false);
+
+    upstream_server.await.unwrap();
+    proxy_server.abort();
+}
+
+#[tokio::test]
+async fn tarball_route_returns_403_for_integrity_mismatch_in_audit_mode() {
+    let package_json = read_fixture_package_json("benign", "minimal-package");
+    let tgz_bytes = build_tgz_from_package_json(&package_json);
+    let integrity = sha512_integrity_for(&tgz_bytes);
+    let mut modified_tgz_bytes = tgz_bytes;
+    modified_tgz_bytes[0] ^= 0xff;
+    let (upstream_registry_url, upstream_server) =
+        spawn_upstream_https_server_for_packument_and_tarball(
+            "minimal-package",
+            "1.0.0",
+            "/minimal-package/-/minimal-package-1.0.0.tgz",
+            Some(&integrity),
+            modified_tgz_bytes,
+        )
+        .await;
+    let (proxy_base_url, proxy_server) =
+        spawn_proxy_server_with_mode(&upstream_registry_url, ProxyMode::Audit).await;
+
+    let rewritten_tarball = fetch_rewritten_tarball_url(&proxy_base_url, "minimal-package").await;
+    let response = reqwest::Client::new()
+        .get(rewritten_tarball)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), reqwest::StatusCode::FORBIDDEN);
+
+    let body = serde_json::from_slice::<Value>(&response.bytes().await.unwrap()).unwrap();
+
+    assert_eq!(body["category"], "blocked_integrity");
 
     upstream_server.await.unwrap();
     proxy_server.abort();
