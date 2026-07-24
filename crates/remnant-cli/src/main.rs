@@ -22,24 +22,31 @@ enum Commands {
         json: bool,
         path: PathBuf,
     },
+    Install {
+        #[arg(long)]
+        audit: bool,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        npm_args: Vec<String>,
+    },
 }
 
 fn main() {
     let cli = Cli::parse();
 
-    let (result, json_output) = match cli.command {
-        Commands::Inspect { json, path } => {
-            let output_format = if json {
-                commands::inspect::InspectOutputFormat::Json
-            } else {
-                commands::inspect::InspectOutputFormat::Human
-            };
+    match cli.command {
+        Commands::Inspect { json, path } => run_inspect(json, path),
+        Commands::Install { audit, npm_args } => run_install(audit, npm_args),
+    }
+}
 
-            (commands::inspect::run(path, output_format), json)
-        }
+fn run_inspect(json: bool, path: PathBuf) {
+    let output_format = if json {
+        commands::inspect::InspectOutputFormat::Json
+    } else {
+        commands::inspect::InspectOutputFormat::Human
     };
 
-    match result {
+    match commands::inspect::run(path, output_format) {
         Ok(outcome) => {
             let exit_code = outcome.exit_code();
 
@@ -50,13 +57,32 @@ fn main() {
         Err(error) => {
             let exit_code = error.exit_code();
 
-            if !json_output {
+            if !json {
                 for line in commands::inspect::format_error_summary(&error) {
                     eprintln!("{line}");
                 }
             }
 
             process::exit(exit_code);
+        }
+    }
+}
+
+fn run_install(audit: bool, npm_args: Vec<String>) {
+    match commands::install::run(audit, npm_args) {
+        Ok(outcome) => {
+            let exit_code = outcome.exit_code();
+
+            if exit_code != 0 {
+                process::exit(exit_code);
+            }
+        }
+        Err(error) => {
+            for line in commands::install::format_error_summary(&error) {
+                eprintln!("{line}");
+            }
+
+            process::exit(error.exit_code());
         }
     }
 }

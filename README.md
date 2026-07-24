@@ -112,6 +112,25 @@ cargo run -- inspect example.tgz
 cargo run -- inspect --json example.tgz
 ```
 
+Run npm install through an ephemeral local Remnant proxy in blocking mode, or
+use audit mode to report findings without blocking:
+
+```bash
+remnant install
+remnant install is-odd
+remnant install --audit
+```
+
+During local development from source:
+
+```bash
+cargo run -- install
+cargo run -- install --audit
+```
+
+The `remnant install` command requires `remnant-npm-registry-proxy` to be built
+from `integrations/npm-registry-proxy/` and available on `PATH`.
+
 The repository is a Cargo workspace. The CLI package lives in `crates/remnant-cli`, while the installed binary remains `remnant`.
 
 ## GitHub Actions
