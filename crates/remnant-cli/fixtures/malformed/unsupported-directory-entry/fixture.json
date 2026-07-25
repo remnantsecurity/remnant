@@ -1,11 +1,11 @@
 {
   "id": "unsupported-directory-entry",
   "category": "malformed",
-  "description": "Artifact contains a directory entry, which Remnant currently rejects.",
+  "description": "Artifact contains a directory entry that archive traversal skips; full inspection fails because package/package.json is missing.",
   "artifact": "artifact.tgz",
   "expected": {
     "archive_inspection": "fail",
-    "archive_error": "ArchiveEntryTypeUnsupported",
+    "archive_error": "PackageJsonMissing",
     "package_json": "not_evaluated",
     "install_script_policy": "not_evaluated",
     "exit_code": 1,

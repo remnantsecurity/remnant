@@ -153,7 +153,11 @@ fn traverse_archive(
             .into_owned();
 
         let entry_type = entry.header().entry_type();
-        let entry_path = validate_archive_entry(&raw_entry_path, entry_type, &mut seen_paths)?;
+        let Some(entry_path) =
+            validate_archive_entry(&raw_entry_path, entry_type, &mut seen_paths)?
+        else {
+            continue;
+        };
 
         let size = entry
             .header()
@@ -230,8 +234,12 @@ fn validate_archive_entry(
     raw_entry_path: &Path,
     entry_type: EntryType,
     seen_paths: &mut HashSet<PathBuf>,
-) -> Result<PathBuf, ArchiveError> {
+) -> Result<Option<PathBuf>, ArchiveError> {
     let entry_path = normalize_archive_entry_path(raw_entry_path)?;
+
+    if entry_type.is_dir() {
+        return Ok(None);
+    }
 
     if !seen_paths.insert(entry_path.clone()) {
         return Err(ArchiveError::ArchiveEntryPathDuplicate(entry_path));
@@ -252,7 +260,7 @@ fn validate_archive_entry(
         });
     }
 
-    Ok(entry_path)
+    Ok(Some(entry_path))
 }
 
 #[cfg(test)]

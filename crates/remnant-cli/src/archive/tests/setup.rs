@@ -251,6 +251,30 @@ pub(super) fn create_tgz_with_symlink(path: &Path, archive_path: &str, target_pa
     finish_archive(builder);
 }
 
+pub(super) fn create_tgz_with_directory_and_linkname(
+    path: &Path,
+    archive_path: &str,
+    linkname: &str,
+) {
+    remove_path_if_exists(path);
+
+    let file = File::create(path).expect("test archive should be created");
+    let encoder = GzEncoder::new(file, Compression::default());
+    let mut builder = Builder::new(encoder);
+
+    let mut header = Header::new_gnu();
+    header.set_entry_type(EntryType::Directory);
+    header.set_size(0);
+    header.set_mode(0o755);
+    header.set_cksum();
+
+    builder
+        .append_link(&mut header, archive_path, linkname)
+        .expect("test directory entry with linkname should be appended");
+
+    finish_archive(builder);
+}
+
 pub(super) fn create_tgz_with_hardlink(path: &Path, archive_path: &str, target_path: &str) {
     remove_path_if_exists(path);
 
