@@ -6,11 +6,12 @@ Malformed
 
 ## Purpose
 
-Validates the strict archive entry-type posture for unsupported tar entry kinds.
+Validates that Remnant recognizes and skips a directory tar entry during archive traversal without returning it as an archive entry.
 
 ## Expected Result
 
-- archive inspection: fail with `ArchiveEntryTypeUnsupported`
+- archive traversal: pass with no returned archive entries
+- full archive inspection: fail with `PackageJsonMissing` because the fixture does not contain `package/package.json`
 - package metadata parsing: not_evaluated
 - install-script policy: not_evaluated
 - expected exit behavior: `1`

@@ -155,21 +155,12 @@ fn committed_path_traversal_archive_entry_fixture_is_rejected() {
 }
 
 #[test]
-fn committed_unsupported_directory_entry_fixture_is_rejected() {
+fn committed_directory_entry_fixture_is_skipped() {
     let path = malformed_fixture_artifact_path("unsupported-directory-entry");
 
-    let result = inspect_archive(
-        File::open(&path).expect("fixture file should be openable"),
-        &path,
-    );
+    let result = read_archive_entries(&path);
 
-    assert_eq!(
-        result,
-        Err(ArchiveError::ArchiveEntryTypeUnsupported {
-            path: PathBuf::from("package/lib"),
-            entry_type: b'5',
-        })
-    );
+    assert_eq!(result, Ok(vec![]));
 }
 
 #[test]
@@ -528,7 +519,7 @@ fn rejects_hardlink_archive_entry() {
 }
 
 #[test]
-fn rejects_directory_archive_entry() {
+fn skips_directory_archive_entry() {
     let path = test_path("directory-entry.tgz");
 
     create_tgz_with_directory(&path, "package/lib");
@@ -537,13 +528,38 @@ fn rejects_directory_archive_entry() {
 
     remove_path_if_exists(&path);
 
+    assert_eq!(result, Ok(vec![]));
+}
+
+#[test]
+fn rejects_directory_archive_entry_with_traversal_path() {
+    let path = test_path("directory-entry-traversal.tgz");
+
+    create_tgz_with_raw_entry_type(&path, "package/../../evil", b'5');
+
+    let result = read_archive_entries(&path);
+
+    remove_path_if_exists(&path);
+
     assert_eq!(
         result,
-        Err(ArchiveError::ArchiveEntryTypeUnsupported {
-            path: PathBuf::from("package/lib"),
-            entry_type: b'5',
-        })
+        Err(ArchiveError::ArchiveEntryPathUnsafe(PathBuf::from(
+            "package/../../evil"
+        )))
     );
+}
+
+#[test]
+fn skips_directory_archive_entry_with_unexpected_linkname() {
+    let path = test_path("directory-entry-linkname.tgz");
+
+    create_tgz_with_directory_and_linkname(&path, "package/lib", "package/package.json");
+
+    let result = read_archive_entries(&path);
+
+    remove_path_if_exists(&path);
+
+    assert_eq!(result, Ok(vec![]));
 }
 
 #[test]
@@ -662,13 +678,7 @@ fn rejects_package_json_when_entry_is_directory() {
 
     remove_path_if_exists(&path);
 
-    assert_eq!(
-        result,
-        Err(ArchiveError::ArchiveEntryTypeUnsupported {
-            path: PathBuf::from("package/package.json"),
-            entry_type: b'5',
-        })
-    );
+    assert_eq!(result, Err(ArchiveError::PackageJsonMissing(path)));
 }
 
 #[test]
