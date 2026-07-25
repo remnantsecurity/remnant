@@ -621,6 +621,88 @@ fn inspects_archive_entries_and_package_json_bytes() {
 }
 
 #[test]
+fn accepts_non_package_top_level_root() {
+    let path = test_path("non-package-top-level-root.tgz");
+    let package_json = br#"{"name":"@types/node"}"#;
+
+    create_tgz_with_raw_file_entries(
+        &path,
+        &[
+            ("node/package.json", package_json.as_ref()),
+            ("node/index.d.ts", b"export {};".as_ref()),
+        ],
+    );
+
+    let result = inspect_archive(
+        File::open(&path).expect("fixture file should be openable"),
+        &path,
+    );
+
+    remove_path_if_exists(&path);
+
+    assert_eq!(
+        result,
+        Ok(ArchiveInspection {
+            entries: vec![
+                ArchiveEntry {
+                    path: PathBuf::from("node/index.d.ts"),
+                    size: b"export {};".len() as u64,
+                },
+                ArchiveEntry {
+                    path: PathBuf::from("node/package.json"),
+                    size: package_json.len() as u64,
+                },
+            ],
+            package_json: package_json.to_vec(),
+        })
+    );
+}
+
+#[test]
+fn rejects_inconsistent_top_level_directories() {
+    let path = test_path("inconsistent-top-level-directories.tgz");
+
+    create_tgz_with_raw_file_entries(
+        &path,
+        &[
+            ("package/package.json", br#"{"name":"safe"}"#.as_ref()),
+            ("other/index.js", b"".as_ref()),
+        ],
+    );
+
+    let result = read_archive_entries(&path);
+
+    remove_path_if_exists(&path);
+
+    assert_eq!(
+        result,
+        Err(ArchiveError::ArchiveEntryOutsidePackageRoot {
+            path: PathBuf::from("other/index.js"),
+            expected_root: PathBuf::from("package"),
+            found_root: PathBuf::from("other"),
+        })
+    );
+}
+
+#[test]
+fn rejects_bare_top_level_file() {
+    let path = test_path("bare-top-level-file.tgz");
+
+    create_tgz_with_raw_file_entries(&path, &[("package.json", br#"{"name":"safe"}"#.as_ref())]);
+
+    let result = read_archive_entries(&path);
+
+    remove_path_if_exists(&path);
+
+    assert_eq!(
+        result,
+        Err(ArchiveError::ArchiveEntryHasNoPackageRoot(PathBuf::from(
+            "package.json"
+        )))
+    );
+}
+
+#[test]
 fn reads_package_json_bytes() {
     let path = test_path("package-json.tgz");
     let contents = br#"{"name":"metadata"}"#;

@@ -342,6 +342,20 @@ fn machine_archive_error_messages_escape_attacker_controlled_path_components() {
         r"archive entry path is duplicated: package/dup\tpath.js"
     );
     assert_eq!(
+        machine_archive_error_message(&ArchiveError::ArchiveEntryHasNoPackageRoot(PathBuf::from(
+            "bare\nfile.json",
+        ))),
+        r"archive entry has no top-level package root directory: bare\nfile.json"
+    );
+    assert_eq!(
+        machine_archive_error_message(&ArchiveError::ArchiveEntryOutsidePackageRoot {
+            path: PathBuf::from("other\n/index.js"),
+            expected_root: PathBuf::from("package"),
+            found_root: PathBuf::from("other\t"),
+        }),
+        r"archive entry other\n/index.js is outside the package root package (found root other\t)"
+    );
+    assert_eq!(
         machine_archive_error_message(&ArchiveError::ArchiveEntryTooLarge {
             path: PathBuf::from("package/large\rfile.js"),
             size: 33,

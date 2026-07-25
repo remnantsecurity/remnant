@@ -31,7 +31,7 @@ use limits::{MAX_ARCHIVE_ENTRIES, MAX_ARCHIVE_ENTRY_BYTES, MAX_ARCHIVE_TOTAL_BYT
 #[cfg(test)]
 use path::MAX_ARCHIVE_ENTRY_PATH_BYTES;
 
-const PACKAGE_JSON_PATH: &str = "package/package.json";
+const PACKAGE_JSON_FILENAME: &str = "package.json";
 
 /// A read-only description of an entry inside an npm package tarball.
 ///
@@ -140,6 +140,7 @@ fn traverse_archive(
     let mut entry_count = 0usize;
     let mut total_size = 0u64;
     let mut package_json = None;
+    let mut package_root: Option<PathBuf> = None;
 
     for entry in entries {
         let mut entry = entry.map_err(|error| map_archive_read_error(path, error))?;
@@ -159,6 +160,8 @@ fn traverse_archive(
             continue;
         };
 
+        validate_package_root(&entry_path, &mut package_root)?;
+
         let size = entry
             .header()
             .size()
@@ -172,7 +175,11 @@ fn traverse_archive(
             PackageJsonReadMode::Capture => {
                 add_archive_entry_size(path, &mut total_size, size)?;
 
-                if entry_path.as_path() == Path::new(PACKAGE_JSON_PATH) {
+                let package_root = package_root
+                    .as_ref()
+                    .expect("package root is set for every entry that reaches this point");
+
+                if entry_path.as_path() == package_root.join(PACKAGE_JSON_FILENAME) {
                     let contents = read_bounded_entry_contents(
                         &mut entry,
                         path,
@@ -261,6 +268,40 @@ fn validate_archive_entry(
     }
 
     Ok(Some(entry_path))
+}
+
+fn validate_package_root(
+    entry_path: &Path,
+    package_root: &mut Option<PathBuf>,
+) -> Result<(), ArchiveError> {
+    let mut components = entry_path.components();
+
+    let root_component = components
+        .next()
+        .expect("normalize_archive_entry_path guarantees a non-empty path");
+
+    if components.next().is_none() {
+        return Err(ArchiveError::ArchiveEntryHasNoPackageRoot(
+            entry_path.to_path_buf(),
+        ));
+    }
+
+    let found_root = PathBuf::from(root_component.as_os_str());
+
+    match package_root {
+        Some(expected_root) if *expected_root != found_root => {
+            Err(ArchiveError::ArchiveEntryOutsidePackageRoot {
+                path: entry_path.to_path_buf(),
+                expected_root: expected_root.clone(),
+                found_root,
+            })
+        }
+        Some(_) => Ok(()),
+        None => {
+            *package_root = Some(found_root);
+            Ok(())
+        }
+    }
 }
 
 #[cfg(test)]
