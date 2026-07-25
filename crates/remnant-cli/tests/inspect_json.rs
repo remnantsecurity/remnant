@@ -190,7 +190,7 @@ fn inspect_json_reports_archive_error_fixture() {
     assert_eq!(report["error"]["kind"], "archive");
     assert_eq!(
         report["error"]["message"],
-        "archive is missing package/package.json"
+        "archive is missing a package.json file at its detected package root"
     );
 }
 

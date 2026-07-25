@@ -85,6 +85,17 @@ pub enum ArchiveError {
     /// deterministic reporting ambiguous.
     ArchiveEntryPathDuplicate(PathBuf),
 
+    /// An archive entry's path has no top-level directory component at all.
+    ArchiveEntryHasNoPackageRoot(PathBuf),
+
+    /// An archive entry's top-level directory does not match the archive's
+    /// already-established single package root.
+    ArchiveEntryOutsidePackageRoot {
+        path: PathBuf,
+        expected_root: PathBuf,
+        found_root: PathBuf,
+    },
+
     /// An archive entry exceeded Remnant's current single-entry size limit.
     ArchiveEntryTooLarge {
         /// The archive entry path whose declared size exceeded the limit.
@@ -194,6 +205,26 @@ impl fmt::Display for ArchiveError {
                     escape_terminal_path(path)
                 )
             }
+            ArchiveError::ArchiveEntryHasNoPackageRoot(path) => {
+                write!(
+                    f,
+                    "archive entry has no top-level package root directory: {}",
+                    escape_terminal_path(path)
+                )
+            }
+            ArchiveError::ArchiveEntryOutsidePackageRoot {
+                path,
+                expected_root,
+                found_root,
+            } => {
+                write!(
+                    f,
+                    "archive entry {} is outside the package root {} (found root {})",
+                    escape_terminal_path(path),
+                    escape_terminal_path(expected_root),
+                    escape_terminal_path(found_root)
+                )
+            }
             ArchiveError::ArchiveEntryTooLarge { path, size, limit } => {
                 write!(
                     f,
@@ -225,7 +256,7 @@ impl fmt::Display for ArchiveError {
             ArchiveError::PackageJsonMissing(path) => {
                 write!(
                     f,
-                    "archive is missing package/package.json: {}",
+                    "archive is missing a package.json file at its detected package root: {}",
                     escape_terminal_path(path)
                 )
             }

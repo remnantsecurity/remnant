@@ -418,8 +418,26 @@ fn machine_archive_error_message(error: &ArchiveError) -> String {
                 machine_path(path)
             )
         }
+        ArchiveError::ArchiveEntryHasNoPackageRoot(path) => {
+            format!(
+                "archive entry has no top-level package root directory: {}",
+                machine_path(path)
+            )
+        }
+        ArchiveError::ArchiveEntryOutsidePackageRoot {
+            path,
+            expected_root,
+            found_root,
+        } => {
+            format!(
+                "archive entry {} is outside the package root {} (found root {})",
+                machine_path(path),
+                machine_path(expected_root),
+                machine_path(found_root)
+            )
+        }
         ArchiveError::PackageJsonMissing(_) => {
-            "archive is missing package/package.json".to_string()
+            "archive is missing a package.json file at its detected package root".to_string()
         }
         ArchiveError::PackageJsonTooLarge { path, size, limit } => {
             format!(
