@@ -9,22 +9,19 @@ use axum::http::{HeaderValue, Response, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
+use remnant_core::{IntegrityStatus, UpstreamFetcher, compute_sha512_hex, verify_sha512_integrity};
 use serde_json::{Value, json};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::admission::ResponseCategory;
-use crate::artifact::{
-    ArtifactMapping, IntegrityStatus, compute_sha512_hex, rewrite_packument_tarball_urls,
-    verify_sha512_integrity,
-};
+use crate::artifact::{ArtifactMapping, rewrite_packument_tarball_urls};
 #[cfg(test)]
 use crate::audit::format_audit_record;
 use crate::audit::{AuditRecord, write_audit_record};
 use crate::config::ProxyMode;
 use crate::inspection::run_inspection;
 use crate::package_name::ValidatedPackageName;
-use crate::upstream::UpstreamFetcher;
 
 const ARTIFACT_KEY_HEX_LENGTH: usize = 64;
 const MAX_BLOCK_RESPONSE_BYTES: usize = 2 * 1024;
@@ -133,7 +130,7 @@ async fn handle_metadata_request(
 
     let response = match state
         .fetcher
-        .fetch_abbreviated_packument(&package_name)
+        .fetch_abbreviated_packument(package_name.as_str())
         .await
     {
         Ok(response) => response,

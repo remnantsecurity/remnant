@@ -3,6 +3,7 @@ use std::{fs, io::Cursor, path::PathBuf};
 
 use flate2::Compression;
 use flate2::write::GzEncoder;
+use remnant_core::UpstreamFetcher;
 use tar::{Builder, Header};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -12,13 +13,12 @@ use tokio_rustls::rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 
 use crate::config::ProxyMode;
 use crate::server::{AppState, build_router};
-use crate::upstream::UpstreamFetcher;
 
 pub(super) async fn spawn_proxy_server(
     upstream_registry_url: &str,
 ) -> (String, tokio::task::JoinHandle<()>) {
     let fetcher =
-        UpstreamFetcher::new_with_danger_certs_for_testing(upstream_registry_url).unwrap();
+        UpstreamFetcher::with_certificate_verification_disabled(upstream_registry_url).unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let proxy_origin = format!("http://localhost:{port}");
@@ -45,7 +45,7 @@ pub(super) async fn spawn_proxy_server_with_audit_sink(
     tokio::sync::mpsc::UnboundedReceiver<String>,
 ) {
     let fetcher =
-        UpstreamFetcher::new_with_danger_certs_for_testing(upstream_registry_url).unwrap();
+        UpstreamFetcher::with_certificate_verification_disabled(upstream_registry_url).unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let proxy_origin = format!("http://localhost:{port}");
@@ -71,7 +71,7 @@ pub(super) async fn spawn_proxy_server_with_mode(
     mode: ProxyMode,
 ) -> (String, tokio::task::JoinHandle<()>) {
     let fetcher =
-        UpstreamFetcher::new_with_danger_certs_for_testing(upstream_registry_url).unwrap();
+        UpstreamFetcher::with_certificate_verification_disabled(upstream_registry_url).unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let proxy_origin = format!("http://localhost:{port}");
@@ -99,7 +99,7 @@ pub(super) async fn spawn_proxy_server_with_mode_and_audit_sink(
     tokio::sync::mpsc::UnboundedReceiver<String>,
 ) {
     let fetcher =
-        UpstreamFetcher::new_with_danger_certs_for_testing(upstream_registry_url).unwrap();
+        UpstreamFetcher::with_certificate_verification_disabled(upstream_registry_url).unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let proxy_origin = format!("http://localhost:{port}");

@@ -52,8 +52,14 @@ impl UpstreamFetcher {
         self.upstream_registry.host_str().unwrap_or("")
     }
 
-    #[cfg(test)]
-    pub(crate) fn new_with_danger_certs_for_testing(
+    /// Accepts self-signed/invalid TLS certificates from the upstream registry —
+    /// for local test servers only. Every other default (no redirects, connect
+    /// timeout) is identical to `new()`; this only relaxes certificate checking.
+    /// Not part of remnant-core's supported API — exists solely so integration
+    /// tests in dependent crates can exercise `UpstreamFetcher` against a local
+    /// self-signed TLS server, the same way remnant-core's own tests do.
+    #[doc(hidden)]
+    pub fn with_certificate_verification_disabled(
         upstream_registry: &str,
     ) -> Result<Self, FetchPackumentError> {
         let upstream_registry = parse_upstream_registry(upstream_registry)?;

@@ -43,7 +43,8 @@ async fn accepts_body_at_exact_byte_limit() {
 async fn fetches_abbreviated_packument_round_trip() {
     let response_body = br#"{"name":"left-pad","versions":{}}"#;
     let (upstream_registry, server_task) = spawn_https_packument_server(response_body).await;
-    let fetcher = UpstreamFetcher::new_with_danger_certs_for_testing(&upstream_registry).unwrap();
+    let fetcher =
+        UpstreamFetcher::with_certificate_verification_disabled(&upstream_registry).unwrap();
 
     let response = fetcher
         .fetch_abbreviated_packument("left-pad")

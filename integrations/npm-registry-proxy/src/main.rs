@@ -6,12 +6,12 @@ mod inspection;
 mod output;
 mod package_name;
 mod server;
-mod upstream;
 
 use std::process::ExitCode;
 
+use remnant_core::UpstreamFetcher;
+
 use server::{AppState, build_router};
-use upstream::UpstreamFetcher;
 
 fn capture_remnant_version() -> String {
     std::process::Command::new("remnant")
