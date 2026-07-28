@@ -131,7 +131,7 @@ cargo run -- install --audit
 The `remnant install` command requires `remnant-npm-registry-proxy` to be built
 from `integrations/npm-registry-proxy/` and available on `PATH`.
 
-The repository is a Cargo workspace. The CLI package lives in `crates/remnant-cli`, while the installed binary remains `remnant`.
+The repository is a Cargo workspace. The CLI package lives in `crates/remnant-cli`, while the installed binary remains `remnant`. The unpublished `crates/remnant-core` library contains npm artifact fetching and integrity verification code and is not wired into a consumer yet.
 
 ## GitHub Actions
 
@@ -186,6 +186,7 @@ Repository layout:
 
 ```text
 Cargo.toml                    # workspace root
+crates/remnant-core/          # unpublished npm artifact fetch and integrity library
 crates/remnant-cli/           # crates.io package; installs the remnant binary
 crates/remnant-cli/fixtures/  # inert package fixture source material
 integrations/                 # standalone experimental integrations
