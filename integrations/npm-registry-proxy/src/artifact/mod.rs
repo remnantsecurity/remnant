@@ -1,11 +1,9 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
 use reqwest::Url;
 use serde_json::{Map, Value};
-use sha2::{Digest, Sha256, Sha512};
+use sha2::{Digest, Sha256};
 
 use crate::package_name::ValidatedPackageName;
 
@@ -29,14 +27,6 @@ pub struct ArtifactMapping {
     pub version: String,
     pub upstream_url: String,
     pub integrity: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IntegrityStatus {
-    Verified,
-    Mismatch,
-    Absent,
-    Unsupported,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -258,40 +248,6 @@ fn apply_url_rewrites(input: &[u8], rewrites: &[(String, String)]) -> Vec<u8> {
     }
 
     output
-}
-
-pub fn verify_sha512_integrity(integrity: Option<&str>, artifact_bytes: &[u8]) -> IntegrityStatus {
-    let Some(integrity) = integrity else {
-        return IntegrityStatus::Absent;
-    };
-
-    let Some(encoded_digest) = integrity.strip_prefix("sha512-") else {
-        return IntegrityStatus::Unsupported;
-    };
-
-    if encoded_digest.is_empty() || encoded_digest.contains(char::is_whitespace) {
-        return IntegrityStatus::Unsupported;
-    }
-
-    let Ok(expected_digest) = STANDARD.decode(encoded_digest) else {
-        return IntegrityStatus::Unsupported;
-    };
-
-    if expected_digest.len() != 64 {
-        return IntegrityStatus::Unsupported;
-    }
-
-    let computed_digest = Sha512::digest(artifact_bytes);
-
-    if expected_digest.as_slice() == computed_digest.as_slice() {
-        IntegrityStatus::Verified
-    } else {
-        IntegrityStatus::Mismatch
-    }
-}
-
-pub fn compute_sha512_hex(bytes: &[u8]) -> String {
-    lowercase_hex(&Sha512::digest(bytes))
 }
 
 fn validated_packument_package_name(

@@ -880,16 +880,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "remnant-core"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "bytes",
+ "futures-util",
+ "reqwest",
+ "sha2",
+ "tokio",
+]
+
+[[package]]
 name = "remnant-npm-registry-proxy"
 version = "0.1.0"
 dependencies = [
  "axum",
  "base64",
- "bytes",
  "chrono",
  "flate2",
- "futures-util",
  "rcgen",
+ "remnant-core",
  "reqwest",
  "serde_json",
  "sha2",
