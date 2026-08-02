@@ -12,6 +12,11 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+mod decision;
+mod lockfile;
+mod npm;
+mod verdict;
+
 const PROXY_BINARY_NAME: &str = "remnant-npm-registry-proxy";
 const PROXY_READY_TIMEOUT: Duration = Duration::from_secs(5);
 const PROXY_READY_POLL_INTERVAL: Duration = Duration::from_millis(50);
