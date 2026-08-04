@@ -9,13 +9,6 @@ pub enum InstallDecision {
     Abort,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "not yet wired into install::run() — Step 2c wires this into the live path"
-    )
-)]
 pub fn decide(verdicts: &[PackageVerdict], audit: bool) -> InstallDecision {
     if audit
         || verdicts
@@ -28,13 +21,6 @@ pub fn decide(verdicts: &[PackageVerdict], audit: bool) -> InstallDecision {
     }
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "not yet wired into install::run() — Step 2c wires this into the live path"
-    )
-)]
 pub fn format_verdict_line(verdict: &PackageVerdict, enforced: bool) -> Option<String> {
     if verdict.category == VerdictCategory::Admitted {
         return None;
@@ -59,6 +45,21 @@ pub fn format_verdict_line(verdict: &PackageVerdict, enforced: bool) -> Option<S
             "remnant: audit - {name}@{version} would have blocked: {category} [{finding_ids}]"
         ))
     }
+}
+
+pub fn format_summary_line(verdicts: &[PackageVerdict], audit: bool) -> String {
+    let total = verdicts.len();
+    let admitted = verdicts
+        .iter()
+        .filter(|verdict| verdict.category == VerdictCategory::Admitted)
+        .count();
+    let non_admitted = total - admitted;
+    let blocked = if audit { 0 } else { non_admitted };
+    let flagged = if audit { non_admitted } else { 0 };
+
+    format!(
+        "remnant: analyzed {total} package(s), {admitted} admitted, {blocked} blocked, {flagged} flagged in audit mode"
+    )
 }
 
 fn verdict_category_label(category: VerdictCategory) -> &'static str {
