@@ -27,13 +27,6 @@ pub struct PackageVerdict {
     pub detail: String,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "not yet wired into install::run() — Step 2c wires this into the live path"
-    )
-)]
 pub async fn inspect_resolved_packages(
     fetcher: &UpstreamFetcher,
     packages: &[ResolvedPackage],

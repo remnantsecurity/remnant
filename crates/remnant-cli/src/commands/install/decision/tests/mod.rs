@@ -75,6 +75,45 @@ fn formats_audit_would_have_blocked_line() {
 }
 
 #[test]
+fn summarizes_all_admitted_packages() {
+    let verdicts = vec![
+        package_verdict(VerdictCategory::Admitted),
+        package_verdict(VerdictCategory::Admitted),
+    ];
+
+    assert_eq!(
+        format_summary_line(&verdicts, false),
+        "remnant: analyzed 2 package(s), 2 admitted, 0 blocked, 0 flagged in audit mode"
+    );
+}
+
+#[test]
+fn summarizes_blocked_packages_in_enforce_mode() {
+    let verdicts = vec![
+        package_verdict(VerdictCategory::Admitted),
+        package_verdict(VerdictCategory::BlockedPolicy),
+    ];
+
+    assert_eq!(
+        format_summary_line(&verdicts, false),
+        "remnant: analyzed 2 package(s), 1 admitted, 1 blocked, 0 flagged in audit mode"
+    );
+}
+
+#[test]
+fn summarizes_flagged_packages_in_audit_mode() {
+    let verdicts = vec![
+        package_verdict(VerdictCategory::Admitted),
+        package_verdict(VerdictCategory::BlockedPolicy),
+    ];
+
+    assert_eq!(
+        format_summary_line(&verdicts, true),
+        "remnant: analyzed 2 package(s), 1 admitted, 0 blocked, 1 flagged in audit mode"
+    );
+}
+
+#[test]
 fn escapes_control_characters_in_verdict_fields() {
     let verdict = PackageVerdict {
         name: String::from("example\npackage"),
