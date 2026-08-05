@@ -2,7 +2,7 @@ use super::*;
 
 mod setup;
 
-use setup::real_lockfile_fixture;
+use setup::{real_lockfile_fixture, workspace_lockfile_fixture};
 
 #[test]
 fn parses_every_non_root_entry_from_a_real_lockfile() {
@@ -52,6 +52,66 @@ fn derives_package_name_from_nested_deduped_node_modules_key() {
 
     assert_eq!(packages.len(), 1);
     assert_eq!(packages[0].name, "@scope/bar");
+}
+
+#[test]
+fn skips_workspace_member_and_its_node_modules_link_entry() {
+    let packages = parse_resolved_packages(&workspace_lockfile_fixture())
+        .expect("workspace package-lock fixture should parse");
+
+    assert_eq!(
+        packages,
+        vec![
+            ResolvedPackage {
+                name: String::from("is-number"),
+                version: String::from("6.0.0"),
+                resolved_url: String::from(
+                    "https://registry.npmjs.org/is-number/-/is-number-6.0.0.tgz",
+                ),
+                integrity: Some(String::from(
+                    "sha512-Wu1VHeILBK8KAWJUAiSZQX94GmOE45Rg6/538fKwiloUu21KncEkYGPqob2oSZ5mUT73vLGrHQjKw3KMPwfDzg==",
+                )),
+            },
+            ResolvedPackage {
+                name: String::from("is-odd"),
+                version: String::from("3.0.1"),
+                resolved_url: String::from("https://registry.npmjs.org/is-odd/-/is-odd-3.0.1.tgz",),
+                integrity: Some(String::from(
+                    "sha512-CQpnWPrDwmP1+SMHXZhtLtJv90yiyVfluGsX5iNCVkrhQtU3TQHsUWPG9wkdk9Lgd5yNpAg9jQEo90CBaXgWMA==",
+                )),
+            },
+        ]
+    );
+}
+
+#[test]
+fn skips_a_bare_relative_path_workspace_member_key() {
+    let contents =
+        br#"{"packages":{"":{},"packages/widget":{"name":"@fixture/widget","version":"1.0.0"}}}"#;
+
+    assert_eq!(parse_resolved_packages(contents), Ok(vec![]));
+}
+
+#[test]
+fn skips_a_node_modules_entry_with_link_true() {
+    let contents = br#"{"packages":{"":{},"node_modules/@fixture/widget":{"resolved":"packages/widget","link":true}}}"#;
+
+    assert_eq!(parse_resolved_packages(contents), Ok(vec![]));
+}
+
+#[test]
+fn does_not_skip_a_node_modules_entry_with_link_false() {
+    let contents = br#"{"packages":{"":{},"node_modules/foo":{"version":"1.0.0","resolved":"https://x/foo.tgz","link":false}}}"#;
+
+    assert_eq!(
+        parse_resolved_packages(contents),
+        Ok(vec![ResolvedPackage {
+            name: String::from("foo"),
+            version: String::from("1.0.0"),
+            resolved_url: String::from("https://x/foo.tgz"),
+            integrity: None,
+        }])
+    );
 }
 
 #[test]
