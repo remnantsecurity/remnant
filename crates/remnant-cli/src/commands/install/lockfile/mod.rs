@@ -105,13 +105,26 @@ pub fn parse_resolved_packages(
         let entry = entry
             .as_object()
             .ok_or_else(|| LockfileParseError::PackageEntryIsNotObject { key: key.clone() })?;
-        let name = key
-            .rsplit_once("node_modules/")
-            .map(|(_, name)| name)
-            .filter(|name| !name.is_empty())
-            .ok_or_else(|| LockfileParseError::PackageEntryKeyHasNoPackageName {
-                key: key.clone(),
-            })?;
+        let Some((_, name)) = key.rsplit_once("node_modules/") else {
+            // No `node_modules/` in the key at all: this is an npm workspace-member
+            // entry, keyed by its plain relative path (e.g. "packages/widget"). It
+            // carries the workspace's own package.json fields, not resolved
+            // dependency data — nothing to fetch or verify.
+            continue;
+        };
+
+        if name.is_empty() {
+            return Err(LockfileParseError::PackageEntryKeyHasNoPackageName { key: key.clone() });
+        }
+
+        if entry.get("link").and_then(Value::as_bool) == Some(true) {
+            // A node_modules/<name> entry for an npm workspace member is npm's own
+            // symlink-into-node_modules bookkeeping for that workspace: `resolved` is
+            // a relative filesystem path (not a fetchable URL) and there is no
+            // integrity hash. Not a registry-resolved dependency.
+            continue;
+        }
+
         let version = required_string_field(entry, key, "version")?;
         let resolved_url = required_string_field(entry, key, "resolved")?;
         let integrity = match entry.get("integrity") {
