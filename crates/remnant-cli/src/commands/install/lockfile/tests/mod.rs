@@ -233,6 +233,52 @@ fn does_not_skip_a_bundled_entry_that_has_resolved() {
 }
 
 #[test]
+fn deduplicates_entries_that_are_fully_identical() {
+    let contents = br#"{"packages":{"":{},"node_modules/foo/node_modules/bar":{"version":"1.0.0","resolved":"https://x/bar.tgz","integrity":"sha512-AAAA=="},"node_modules/bar":{"version":"1.0.0","resolved":"https://x/bar.tgz","integrity":"sha512-AAAA=="}}}"#;
+
+    assert_eq!(
+        parse_resolved_packages(contents),
+        Ok(vec![ResolvedPackage {
+            name: String::from("bar"),
+            version: String::from("1.0.0"),
+            resolved_url: Some(String::from("https://x/bar.tgz")),
+            integrity: Some(String::from("sha512-AAAA==")),
+        }])
+    );
+}
+
+#[test]
+fn does_not_deduplicate_entries_with_the_same_name_and_version_but_different_integrity() {
+    let contents = br#"{"packages":{"":{},"node_modules/foo/node_modules/bar":{"version":"1.0.0","resolved":"https://x/bar.tgz","integrity":"sha512-AAAA=="},"node_modules/bar":{"version":"1.0.0","resolved":"https://x/bar.tgz","integrity":"sha512-BBBB=="}}}"#;
+
+    let packages = parse_resolved_packages(contents)
+        .expect("entries with differing integrity should still parse");
+
+    assert_eq!(packages.len(), 2);
+}
+
+#[test]
+fn does_not_deduplicate_a_populated_entry_against_a_missing_resolved_decoy() {
+    let contents = br#"{"packages":{"":{},"node_modules/foo/node_modules/bar":{"version":"1.0.0"},"node_modules/bar":{"version":"1.0.0","resolved":"https://x/bar.tgz","integrity":"sha512-AAAA=="}}}"#;
+
+    let packages = parse_resolved_packages(contents).expect(
+        "a populated entry and a missing-resolved entry at the same name/version should both parse",
+    );
+
+    assert_eq!(packages.len(), 2);
+    assert!(
+        packages
+            .iter()
+            .any(|package| package.resolved_url.is_none())
+    );
+    assert!(
+        packages
+            .iter()
+            .any(|package| package.resolved_url.is_some())
+    );
+}
+
+#[test]
 fn rejects_package_entry_with_non_string_resolved() {
     assert_eq!(
         parse_resolved_packages(
