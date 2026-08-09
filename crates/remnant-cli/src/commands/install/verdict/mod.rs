@@ -5,9 +5,169 @@ use crate::commands::inspect::InspectError;
 use crate::commands::install::lockfile::ResolvedPackage;
 use crate::package_json::parse_package_json;
 use crate::policy::{PolicyStatus, evaluate_default_policy};
-use remnant_core::{IntegrityStatus, UpstreamFetcher, verify_sha512_integrity};
+use remnant_core::{
+    FetchPackumentError, IntegrityStatus, UpstreamFetcher, verify_sha512_integrity,
+};
+use std::fmt;
 use std::fs::File;
 use std::path::{Path, PathBuf};
+
+#[derive(Debug, PartialEq, Eq)]
+struct FallbackDistMetadata {
+    tarball_url: String,
+    integrity: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum PackumentFallbackError {
+    PackumentFetchFailed(FetchPackumentError),
+    ResponseIsNotValidJson,
+    ResponseIsNotAnObject,
+    VersionsFieldMissing,
+    VersionsFieldIsNotObject,
+    PinnedVersionMissingFromVersions,
+    VersionEntryIsNotObject,
+    DistFieldMissing,
+    DistFieldIsNotObject,
+    TarballFieldMissing,
+    TarballFieldIsNotString,
+    IntegrityFieldIsNotString,
+}
+
+impl fmt::Display for PackumentFallbackError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PackumentFallbackError::PackumentFetchFailed(error) => {
+                write!(f, "packument fallback fetch failed: {error}")
+            }
+            PackumentFallbackError::ResponseIsNotValidJson => {
+                write!(f, "packument fallback response is not valid JSON")
+            }
+            PackumentFallbackError::ResponseIsNotAnObject => {
+                write!(
+                    f,
+                    "packument fallback response top-level value is not an object"
+                )
+            }
+            PackumentFallbackError::VersionsFieldMissing => {
+                write!(
+                    f,
+                    "packument fallback response is missing the versions field"
+                )
+            }
+            PackumentFallbackError::VersionsFieldIsNotObject => {
+                write!(
+                    f,
+                    "packument fallback response versions field is not an object"
+                )
+            }
+            PackumentFallbackError::PinnedVersionMissingFromVersions => {
+                write!(
+                    f,
+                    "packument fallback response does not include the pinned version"
+                )
+            }
+            PackumentFallbackError::VersionEntryIsNotObject => {
+                write!(
+                    f,
+                    "packument fallback response version entry is not an object"
+                )
+            }
+            PackumentFallbackError::DistFieldMissing => {
+                write!(
+                    f,
+                    "packument fallback response version entry is missing the dist field"
+                )
+            }
+            PackumentFallbackError::DistFieldIsNotObject => {
+                write!(f, "packument fallback response dist field is not an object")
+            }
+            PackumentFallbackError::TarballFieldMissing => {
+                write!(
+                    f,
+                    "packument fallback response dist field is missing the tarball field"
+                )
+            }
+            PackumentFallbackError::TarballFieldIsNotString => {
+                write!(
+                    f,
+                    "packument fallback response dist tarball field is not a string"
+                )
+            }
+            PackumentFallbackError::IntegrityFieldIsNotString => {
+                write!(
+                    f,
+                    "packument fallback response dist integrity field is not a string"
+                )
+            }
+        }
+    }
+}
+
+async fn dist_metadata_for_package(
+    fetcher: &UpstreamFetcher,
+    package: &ResolvedPackage,
+) -> Result<FallbackDistMetadata, PackumentFallbackError> {
+    match &package.resolved_url {
+        Some(resolved_url) => Ok(FallbackDistMetadata {
+            tarball_url: resolved_url.clone(),
+            integrity: package.integrity.clone(),
+        }),
+        None => {
+            let response = fetcher
+                .fetch_abbreviated_packument(&package.name)
+                .await
+                .map_err(PackumentFallbackError::PackumentFetchFailed)?;
+            parse_dist_metadata_for_pinned_version(&response.bytes, &package.version)
+        }
+    }
+}
+
+fn parse_dist_metadata_for_pinned_version(
+    bytes: &[u8],
+    pinned_version: &str,
+) -> Result<FallbackDistMetadata, PackumentFallbackError> {
+    let packument: serde_json::Value = serde_json::from_slice(bytes)
+        .map_err(|_| PackumentFallbackError::ResponseIsNotValidJson)?;
+    let root = packument
+        .as_object()
+        .ok_or(PackumentFallbackError::ResponseIsNotAnObject)?;
+    let versions = root
+        .get("versions")
+        .ok_or(PackumentFallbackError::VersionsFieldMissing)?
+        .as_object()
+        .ok_or(PackumentFallbackError::VersionsFieldIsNotObject)?;
+    let version_entry = versions
+        .get(pinned_version)
+        .ok_or(PackumentFallbackError::PinnedVersionMissingFromVersions)?
+        .as_object()
+        .ok_or(PackumentFallbackError::VersionEntryIsNotObject)?;
+    let dist = version_entry
+        .get("dist")
+        .ok_or(PackumentFallbackError::DistFieldMissing)?
+        .as_object()
+        .ok_or(PackumentFallbackError::DistFieldIsNotObject)?;
+    let tarball_url = dist
+        .get("tarball")
+        .ok_or(PackumentFallbackError::TarballFieldMissing)?
+        .as_str()
+        .ok_or(PackumentFallbackError::TarballFieldIsNotString)?
+        .to_owned();
+    let integrity = match dist.get("integrity") {
+        Some(value) => Some(
+            value
+                .as_str()
+                .ok_or(PackumentFallbackError::IntegrityFieldIsNotString)?
+                .to_owned(),
+        ),
+        None => None,
+    };
+
+    Ok(FallbackDistMetadata {
+        tarball_url,
+        integrity,
+    })
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VerdictCategory {
@@ -46,7 +206,22 @@ pub async fn inspect_resolved_package(
     package: &ResolvedPackage,
     temp_path: &Path,
 ) -> PackageVerdict {
-    let bytes = match fetcher.fetch_tarball_bytes(&package.resolved_url).await {
+    let dist_metadata = match dist_metadata_for_package(fetcher, package).await {
+        Ok(dist_metadata) => dist_metadata,
+        Err(error) => {
+            return package_verdict(
+                package,
+                VerdictCategory::Error,
+                Vec::new(),
+                error.to_string(),
+            );
+        }
+    };
+
+    let bytes = match fetcher
+        .fetch_tarball_bytes(&dist_metadata.tarball_url)
+        .await
+    {
         Ok(bytes) => bytes,
         Err(error) => {
             return package_verdict(
@@ -58,7 +233,7 @@ pub async fn inspect_resolved_package(
         }
     };
 
-    let integrity_status = verify_sha512_integrity(package.integrity.as_deref(), &bytes);
+    let integrity_status = verify_sha512_integrity(dist_metadata.integrity.as_deref(), &bytes);
     if integrity_status != IntegrityStatus::Verified {
         return package_verdict(
             package,

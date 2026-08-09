@@ -855,10 +855,12 @@ version = "0.1.3"
 dependencies = [
  "clap",
  "flate2",
+ "rcgen",
  "remnant-core",
  "serde_json",
  "tar",
  "tokio",
+ "tokio-rustls",
 ]
 
 [[package]]
