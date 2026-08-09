@@ -15,9 +15,9 @@ fn parses_every_non_root_entry_from_a_real_lockfile() {
             ResolvedPackage {
                 name: String::from("@babel/helper-validator-identifier"),
                 version: String::from("8.0.4"),
-                resolved_url: String::from(
+                resolved_url: Some(String::from(
                     "https://registry.npmjs.org/@babel/helper-validator-identifier/-/helper-validator-identifier-8.0.4.tgz",
-                ),
+                )),
                 integrity: Some(String::from(
                     "sha512-4wFaiLd0bVo4cIoTXI3zKI038NIWE/cr3jvBjejOVYVxV/m8Ltav1USiGzG1fmS5J2RhgEOgXNNK46cRPnRsrg==",
                 )),
@@ -25,9 +25,9 @@ fn parses_every_non_root_entry_from_a_real_lockfile() {
             ResolvedPackage {
                 name: String::from("is-number"),
                 version: String::from("6.0.0"),
-                resolved_url: String::from(
+                resolved_url: Some(String::from(
                     "https://registry.npmjs.org/is-number/-/is-number-6.0.0.tgz",
-                ),
+                )),
                 integrity: Some(String::from(
                     "sha512-Wu1VHeILBK8KAWJUAiSZQX94GmOE45Rg6/538fKwiloUu21KncEkYGPqob2oSZ5mUT73vLGrHQjKw3KMPwfDzg==",
                 )),
@@ -35,7 +35,9 @@ fn parses_every_non_root_entry_from_a_real_lockfile() {
             ResolvedPackage {
                 name: String::from("is-odd"),
                 version: String::from("3.0.1"),
-                resolved_url: String::from("https://registry.npmjs.org/is-odd/-/is-odd-3.0.1.tgz",),
+                resolved_url: Some(String::from(
+                    "https://registry.npmjs.org/is-odd/-/is-odd-3.0.1.tgz",
+                )),
                 integrity: Some(String::from(
                     "sha512-CQpnWPrDwmP1+SMHXZhtLtJv90yiyVfluGsX5iNCVkrhQtU3TQHsUWPG9wkdk9Lgd5yNpAg9jQEo90CBaXgWMA==",
                 )),
@@ -65,9 +67,9 @@ fn skips_workspace_member_and_its_node_modules_link_entry() {
             ResolvedPackage {
                 name: String::from("is-number"),
                 version: String::from("6.0.0"),
-                resolved_url: String::from(
+                resolved_url: Some(String::from(
                     "https://registry.npmjs.org/is-number/-/is-number-6.0.0.tgz",
-                ),
+                )),
                 integrity: Some(String::from(
                     "sha512-Wu1VHeILBK8KAWJUAiSZQX94GmOE45Rg6/538fKwiloUu21KncEkYGPqob2oSZ5mUT73vLGrHQjKw3KMPwfDzg==",
                 )),
@@ -75,7 +77,9 @@ fn skips_workspace_member_and_its_node_modules_link_entry() {
             ResolvedPackage {
                 name: String::from("is-odd"),
                 version: String::from("3.0.1"),
-                resolved_url: String::from("https://registry.npmjs.org/is-odd/-/is-odd-3.0.1.tgz",),
+                resolved_url: Some(String::from(
+                    "https://registry.npmjs.org/is-odd/-/is-odd-3.0.1.tgz",
+                )),
                 integrity: Some(String::from(
                     "sha512-CQpnWPrDwmP1+SMHXZhtLtJv90yiyVfluGsX5iNCVkrhQtU3TQHsUWPG9wkdk9Lgd5yNpAg9jQEo90CBaXgWMA==",
                 )),
@@ -108,7 +112,7 @@ fn does_not_skip_a_node_modules_entry_with_link_false() {
         Ok(vec![ResolvedPackage {
             name: String::from("foo"),
             version: String::from("1.0.0"),
-            resolved_url: String::from("https://x/foo.tgz"),
+            resolved_url: Some(String::from("https://x/foo.tgz")),
             integrity: None,
         }])
     );
@@ -193,12 +197,38 @@ fn rejects_package_entry_with_non_string_version() {
 }
 
 #[test]
-fn rejects_package_entry_missing_resolved_field() {
+fn parses_entry_missing_resolved_as_unresolved_when_not_bundled() {
     assert_eq!(
         parse_resolved_packages(br#"{"packages":{"node_modules/foo":{"version":"1.0.0"}}}"#),
-        Err(LockfileParseError::PackageEntryMissingResolved {
-            key: String::from("node_modules/foo")
-        })
+        Ok(vec![ResolvedPackage {
+            name: String::from("foo"),
+            version: String::from("1.0.0"),
+            resolved_url: None,
+            integrity: None,
+        }])
+    );
+}
+
+#[test]
+fn skips_a_bundled_entry_missing_resolved() {
+    let contents =
+        br#"{"packages":{"":{},"node_modules/foo":{"version":"1.0.0","inBundle":true}}}"#;
+
+    assert_eq!(parse_resolved_packages(contents), Ok(vec![]));
+}
+
+#[test]
+fn does_not_skip_a_bundled_entry_that_has_resolved() {
+    let contents = br#"{"packages":{"":{},"node_modules/foo":{"version":"1.0.0","resolved":"https://x/foo.tgz","inBundle":true}}}"#;
+
+    assert_eq!(
+        parse_resolved_packages(contents),
+        Ok(vec![ResolvedPackage {
+            name: String::from("foo"),
+            version: String::from("1.0.0"),
+            resolved_url: Some(String::from("https://x/foo.tgz")),
+            integrity: None,
+        }])
     );
 }
 

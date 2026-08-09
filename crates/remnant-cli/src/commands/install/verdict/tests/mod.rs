@@ -3,7 +3,8 @@ use super::*;
 mod setup;
 
 use setup::{
-    build_tarball_with_package_json, spawn_tarball_server, test_temp_path, unbound_local_url,
+    build_tarball_with_package_json, packument_fallback_fetcher, spawn_https_packument_server,
+    spawn_tarball_server, test_temp_path, unbound_https_upstream_registry_url, unbound_local_url,
 };
 
 const ADMITTED_PACKAGE_JSON: &[u8] = br#"{
@@ -25,7 +26,7 @@ async fn admits_a_clean_resolved_package() {
     let package = ResolvedPackage {
         name: String::from("lockfile-name"),
         version: String::from("9.9.9"),
-        resolved_url,
+        resolved_url: Some(resolved_url),
         integrity: Some(String::from(ADMITTED_INTEGRITY)),
     };
 
@@ -122,6 +123,96 @@ async fn reports_error_when_upstream_fetch_fails() {
     assert!(verdict.finding_ids.is_empty());
 }
 
+#[test]
+fn parses_dist_metadata_for_the_pinned_version_from_a_packument_response() {
+    let body = br#"{"versions":{"1.0.0":{"dist":{"tarball":"https://example.test/pkg-1.0.0.tgz","integrity":"sha512-AAAA=="}}}}"#;
+
+    let metadata = parse_dist_metadata_for_pinned_version(body, "1.0.0")
+        .expect("packument response should parse");
+
+    assert_eq!(metadata.tarball_url, "https://example.test/pkg-1.0.0.tgz");
+    assert_eq!(metadata.integrity, Some(String::from("sha512-AAAA==")));
+}
+
+#[test]
+fn parses_dist_metadata_without_an_integrity_field() {
+    let body =
+        br#"{"versions":{"1.0.0":{"dist":{"tarball":"https://example.test/pkg-1.0.0.tgz"}}}}"#;
+
+    let metadata = parse_dist_metadata_for_pinned_version(body, "1.0.0")
+        .expect("packument response should parse");
+
+    assert_eq!(metadata.integrity, None);
+}
+
+#[test]
+fn rejects_packument_response_missing_the_pinned_version() {
+    let body =
+        br#"{"versions":{"2.0.0":{"dist":{"tarball":"https://example.test/pkg-2.0.0.tgz"}}}}"#;
+
+    assert_eq!(
+        parse_dist_metadata_for_pinned_version(body, "1.0.0"),
+        Err(PackumentFallbackError::PinnedVersionMissingFromVersions)
+    );
+}
+
+#[test]
+fn rejects_packument_response_with_non_string_tarball_field() {
+    let body = br#"{"versions":{"1.0.0":{"dist":{"tarball":1}}}}"#;
+
+    assert_eq!(
+        parse_dist_metadata_for_pinned_version(body, "1.0.0"),
+        Err(PackumentFallbackError::TarballFieldIsNotString)
+    );
+}
+
+#[tokio::test]
+async fn admits_a_package_with_dist_metadata_resolved_via_packument_fallback() {
+    let tarball_bytes = build_tarball_with_package_json(ADMITTED_PACKAGE_JSON);
+    let tarball_url = spawn_tarball_server(tarball_bytes).await;
+    let packument_body = format!(
+        r#"{{"name":"fixture-package","versions":{{"1.0.0":{{"dist":{{"tarball":"{tarball_url}","integrity":"{ADMITTED_INTEGRITY}"}}}}}}}}"#
+    );
+    let upstream_registry = spawn_https_packument_server(packument_body.into_bytes()).await;
+    let fetcher = packument_fallback_fetcher(&upstream_registry);
+    let package = ResolvedPackage {
+        name: String::from("fixture-package"),
+        version: String::from("1.0.0"),
+        resolved_url: None,
+        integrity: None,
+    };
+
+    let verdict = inspect_resolved_package(
+        &fetcher,
+        &package,
+        &test_temp_path("packument-fallback-admitted.tgz"),
+    )
+    .await;
+
+    assert_eq!(verdict.category, VerdictCategory::Admitted);
+}
+
+#[tokio::test]
+async fn reports_error_when_packument_fallback_fetch_fails() {
+    let fetcher = packument_fallback_fetcher(&unbound_https_upstream_registry_url());
+    let package = ResolvedPackage {
+        name: String::from("fixture-package"),
+        version: String::from("1.0.0"),
+        resolved_url: None,
+        integrity: None,
+    };
+
+    let verdict = inspect_resolved_package(
+        &fetcher,
+        &package,
+        &test_temp_path("packument-fallback-fetch-failure.tgz"),
+    )
+    .await;
+
+    assert_eq!(verdict.category, VerdictCategory::Error);
+    assert!(verdict.finding_ids.is_empty());
+}
+
 #[tokio::test]
 async fn inspects_every_resolved_package_in_the_batch() {
     let admitted_package = resolved_package(
@@ -149,7 +240,7 @@ fn resolved_package(resolved_url: String, integrity: Option<&str>) -> ResolvedPa
     ResolvedPackage {
         name: String::from("fixture-package"),
         version: String::from("1.0.0"),
-        resolved_url,
+        resolved_url: Some(resolved_url),
         integrity: integrity.map(str::to_owned),
     }
 }

@@ -7,7 +7,7 @@ use std::fmt;
 pub struct ResolvedPackage {
     pub name: String,
     pub version: String,
-    pub resolved_url: String,
+    pub resolved_url: Option<String>,
     pub integrity: Option<String>,
 }
 
@@ -21,7 +21,6 @@ pub enum LockfileParseError {
     PackageEntryKeyHasNoPackageName { key: String },
     PackageEntryMissingVersion { key: String },
     PackageEntryVersionIsNotString { key: String },
-    PackageEntryMissingResolved { key: String },
     PackageEntryResolvedIsNotString { key: String },
     PackageEntryIntegrityIsNotString { key: String },
 }
@@ -61,10 +60,6 @@ impl fmt::Display for LockfileParseError {
             LockfileParseError::PackageEntryVersionIsNotString { key } => write!(
                 f,
                 "package-lock.json package entry {key:?} version field must be a string"
-            ),
-            LockfileParseError::PackageEntryMissingResolved { key } => write!(
-                f,
-                "package-lock.json package entry {key:?} is missing the resolved field"
             ),
             LockfileParseError::PackageEntryResolvedIsNotString { key } => write!(
                 f,
@@ -125,8 +120,17 @@ pub fn parse_resolved_packages(
             continue;
         }
 
-        let version = required_string_field(entry, key, "version")?;
-        let resolved_url = required_string_field(entry, key, "resolved")?;
+        let resolved_url = optional_resolved_url_field(entry, key)?;
+
+        if resolved_url.is_none() && entry.get("inBundle").and_then(Value::as_bool) == Some(true) {
+            // A bundled dependency missing `resolved` has no independent registry
+            // artifact to fetch — its bytes ship inside the bundling parent's own
+            // tarball, which is independently fetched and integrity-verified.
+            // See docs/decisions/0053-lockfile-resolve-coverage-guarantee.md.
+            continue;
+        }
+
+        let version = required_version_field(entry, key)?;
         let integrity = match entry.get("integrity") {
             Some(value) => Some(
                 value
@@ -152,33 +156,35 @@ pub fn parse_resolved_packages(
     Ok(resolved_packages)
 }
 
-fn required_string_field(
+fn required_version_field(
     entry: &serde_json::Map<String, Value>,
     key: &str,
-    field: &str,
 ) -> Result<String, LockfileParseError> {
-    let value = entry.get(field).ok_or_else(|| match field {
-        "version" => LockfileParseError::PackageEntryMissingVersion {
+    entry
+        .get("version")
+        .ok_or_else(|| LockfileParseError::PackageEntryMissingVersion {
             key: key.to_owned(),
-        },
-        "resolved" => LockfileParseError::PackageEntryMissingResolved {
-            key: key.to_owned(),
-        },
-        _ => unreachable!("required lockfile field is known"),
-    })?;
-
-    value
+        })?
         .as_str()
         .map(str::to_owned)
-        .ok_or_else(|| match field {
-            "version" => LockfileParseError::PackageEntryVersionIsNotString {
-                key: key.to_owned(),
-            },
-            "resolved" => LockfileParseError::PackageEntryResolvedIsNotString {
-                key: key.to_owned(),
-            },
-            _ => unreachable!("required lockfile field is known"),
+        .ok_or_else(|| LockfileParseError::PackageEntryVersionIsNotString {
+            key: key.to_owned(),
         })
+}
+
+fn optional_resolved_url_field(
+    entry: &serde_json::Map<String, Value>,
+    key: &str,
+) -> Result<Option<String>, LockfileParseError> {
+    match entry.get("resolved") {
+        None => Ok(None),
+        Some(value) => value
+            .as_str()
+            .map(|resolved| Some(resolved.to_owned()))
+            .ok_or_else(|| LockfileParseError::PackageEntryResolvedIsNotString {
+                key: key.to_owned(),
+            }),
+    }
 }
 
 #[cfg(test)]
