@@ -153,6 +153,7 @@ pub fn parse_resolved_packages(
 
     resolved_packages
         .sort_by(|left, right| (&left.name, &left.version).cmp(&(&right.name, &right.version)));
+    resolved_packages.dedup();
     Ok(resolved_packages)
 }
 
