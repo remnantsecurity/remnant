@@ -3,7 +3,11 @@ name = "remnant-core"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
-publish = false
+description = "Shared artifact fetch and integrity verification library for Remnant."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/remnantsecurity/remnant"
+keywords = ["supply-chain", "security", "artifacts"]
+categories = ["development-tools"]
 
 [dependencies]
 base64 = "0.22.1"
