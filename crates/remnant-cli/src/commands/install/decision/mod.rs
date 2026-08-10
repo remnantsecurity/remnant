@@ -9,8 +9,8 @@ pub enum InstallDecision {
     Abort,
 }
 
-pub fn decide(verdicts: &[PackageVerdict], audit: bool) -> InstallDecision {
-    if audit
+pub fn decide(verdicts: &[PackageVerdict], non_blocking: bool) -> InstallDecision {
+    if non_blocking
         || verdicts
             .iter()
             .all(|verdict| verdict.category == VerdictCategory::Admitted)
@@ -42,24 +42,24 @@ pub fn format_verdict_line(verdict: &PackageVerdict, enforced: bool) -> Option<S
         ))
     } else {
         Some(format!(
-            "remnant: audit - {name}@{version} would have blocked: {category} [{finding_ids}]"
+            "remnant: flagged {name}@{version}: {category} [{finding_ids}]"
         ))
     }
 }
 
-pub fn format_summary_line(verdicts: &[PackageVerdict], audit: bool) -> String {
+pub fn format_summary_line(verdicts: &[PackageVerdict], non_blocking: bool) -> String {
     let total = verdicts.len();
     let admitted = verdicts
         .iter()
         .filter(|verdict| verdict.category == VerdictCategory::Admitted)
         .count();
     let non_admitted = total - admitted;
-    let blocked = if audit { 0 } else { non_admitted };
-    let flagged = if audit { non_admitted } else { 0 };
 
-    format!(
-        "remnant: analyzed {total} package(s), {admitted} admitted, {blocked} blocked, {flagged} flagged in audit mode"
-    )
+    if non_blocking {
+        format!("remnant: analyzed {total} package(s), {admitted} admitted, {non_admitted} flagged")
+    } else {
+        format!("remnant: analyzed {total} package(s), {admitted} admitted, {non_admitted} blocked")
+    }
 }
 
 fn verdict_category_label(category: VerdictCategory) -> &'static str {
