@@ -1,9 +1,9 @@
 [package]
 name = "remnant-cli"
-version = "0.1.3"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.95"
-description = "Deterministic npm artifact admission for local and CI supply-chain checks."
+description = "Deterministic package artifact admission for local and CI supply-chain checks."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/remnantsecurity/remnant"
 readme = "README.md"
