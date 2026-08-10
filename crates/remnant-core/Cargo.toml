@@ -6,6 +6,7 @@ rust-version = "1.95"
 description = "Shared artifact fetch and integrity verification library for Remnant."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/remnantsecurity/remnant"
+readme = "README.md"
 keywords = ["supply-chain", "security", "artifacts"]
 categories = ["development-tools"]
 
