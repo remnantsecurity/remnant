@@ -1,6 +1,6 @@
 [package]
 name = "remnant-cli"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.95"
 description = "Deterministic package artifact admission for local and CI supply-chain checks."
