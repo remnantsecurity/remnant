@@ -102,7 +102,7 @@ Alongside those bounds, archive traversal enforces:
 Remnant ships two CLI commands and a GitHub Action, all built on the same inspection engine:
 
 - **`remnant inspect`**: inspect a single npm `.tgz` artifact you already have on disk. No network access required.
-- **`remnant install`**: a drop-in gate in front of your real `npm install`. It resolves your full dependency tree via `npm` itself, fetches and inspects every resolved package in-process, and only materializes the install (via `npm ci`) if every package clears, or if you've explicitly asked to audit instead of enforce.
+- **`remnant install`**: a drop-in gate in front of your real `npm install`. It resolves your full dependency tree via `npm` itself, fetches and inspects every resolved package in-process, and only materializes the install (via `npm ci`) if every package clears, or if you've explicitly accepted the risk of proceeding anyway (`--accept-risk`). A `--dry-run` mode reports the same findings without ever running `npm ci` at all.
 - **GitHub Action** (`remnant-inspect`): wraps `remnant inspect` for CI, so a malformed or policy-failing artifact fails the build with a deterministic exit code instead of a heuristic risk score.
 
 ## Installation
@@ -147,20 +147,34 @@ Add a new dependency the same way you would with `npm install <package>`. Remnan
 remnant install husky
 ```
 
-Report findings without blocking the install (audit mode):
+Report findings but proceed anyway, consciously accepting the risk (`npm ci` still runs):
 
 ```bash
-remnant install --audit
+remnant install --accept-risk
 ```
 
-In enforce mode, a single non-admitted package aborts before `npm ci` ever runs, and nothing gets written to `node_modules`. In audit mode, every non-admitted package is reported, but `npm ci` still runs.
+Preview findings without installing anything at all (`npm ci` never runs):
+
+```bash
+remnant install --dry-run
+```
+
+`--accept-risk` and `--dry-run` are mutually exclusive. In enforce mode (the default), a single non-admitted package aborts before `npm ci` ever runs, and nothing gets written to `node_modules`. Under `--accept-risk`, every non-admitted package is reported, but `npm ci` still runs regardless. This does not suppress whatever risk was found; it only tells you about it. Under `--dry-run`, every non-admitted package is reported and `npm ci` never runs at all.
 
 Example enforce-mode output when a package with an install hook is in the tree:
 
 ```text
 remnant: inspecting 42 package(s)
 remnant: blocked some-package@1.2.3: blocked_policy [install-scripts-disallowed]
-remnant: analyzed 42 package(s), 41 admitted, 1 blocked, 0 flagged in audit mode
+remnant: analyzed 42 package(s), 41 admitted, 1 blocked
+```
+
+The same package under `--accept-risk` or `--dry-run`:
+
+```text
+remnant: inspecting 42 package(s)
+remnant: flagged some-package@1.2.3: blocked_policy [install-scripts-disallowed]
+remnant: analyzed 42 package(s), 41 admitted, 1 flagged
 ```
 
 ### During local development from source
@@ -169,7 +183,8 @@ remnant: analyzed 42 package(s), 41 admitted, 1 blocked, 0 flagged in audit mode
 cargo run -- inspect example.tgz
 cargo run -- inspect --json example.tgz
 cargo run -- install
-cargo run -- install --audit
+cargo run -- install --accept-risk
+cargo run -- install --dry-run
 ```
 
 ## GitHub Actions
@@ -217,15 +232,15 @@ The archive is rejected before a single byte is written to disk: a deterministic
 
 | Exit code | Meaning |
 |--:|---|
-| `0` | Resolution, inspection, and `npm ci` all completed cleanly. |
-| `1` | Remnant couldn't complete resolution or inspection at all (npm not on `PATH`, lockfile unreadable or unparseable, upstream registry misconfigured), reported with an `error: ...` line on stderr. This code also covers the underlying `npm install --package-lock-only` / `npm ci` process exiting non-zero itself, in which case that exit code is passed through unchanged rather than reinterpreted. Consult [npm's own CLI documentation](https://docs.npmjs.com/cli/v10/commands/npm) for what a given npm failure means. |
-| `2` | Enforce mode blocked the install: at least one resolved package did not clear inspection. See Verdict Categories below for what each one means. `npm ci` never ran; nothing was written to `node_modules`. |
+| `0` | `npm ci` completed successfully (default enforce mode or `--accept-risk`), or every resolved package would have been admitted under `--dry-run`. |
+| `1` | Remnant couldn't complete resolution or inspection at all (npm not on `PATH`, lockfile unreadable or unparseable, upstream registry misconfigured), reported with an `error: ...` line on stderr. This code also covers the underlying `npm install --package-lock-only` process, or `npm ci` under default/`--accept-risk`, exiting non-zero itself, in which case that exit code is passed through unchanged rather than reinterpreted. Consult [npm's own CLI documentation](https://docs.npmjs.com/cli/v10/commands/npm) for what a given npm failure means. |
+| `2` | Enforce mode (the default) blocked the install: at least one resolved package did not clear inspection, and `npm ci` never ran. Under `--dry-run`, this instead means at least one resolved package would not have cleared inspection; `npm ci` still never ran. See Verdict Categories below for what each category means. Never returned under `--accept-risk`, which always defers to `npm ci`'s own exit code regardless of findings. |
 
 This makes Remnant suitable for CI admission workflows where malformed artifacts, npm's own failures, and policy failures all need different handling.
 
 ## Verdict Categories
 
-Every non-admitted package in `remnant install`'s output is tagged with a category, printed as `remnant: blocked <name>@<version>: <category> [<rule-ids>]` (enforce mode) or `remnant: audit - <name>@<version> would have blocked: <category> [<rule-ids>]` (audit mode):
+Every non-admitted package in `remnant install`'s output is tagged with a category, printed as `remnant: blocked <name>@<version>: <category> [<rule-ids>]` (enforce mode, the default) or `remnant: flagged <name>@<version>: <category> [<rule-ids>]` (`--accept-risk` or `--dry-run`):
 
 | Category | Meaning |
 |---|---|

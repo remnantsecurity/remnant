@@ -23,8 +23,10 @@ enum Commands {
         path: PathBuf,
     },
     Install {
-        #[arg(long)]
-        audit: bool,
+        #[arg(long, conflicts_with = "dry_run")]
+        accept_risk: bool,
+        #[arg(long, conflicts_with = "accept_risk")]
+        dry_run: bool,
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         npm_args: Vec<String>,
     },
@@ -35,7 +37,11 @@ fn main() {
 
     match cli.command {
         Commands::Inspect { json, path } => run_inspect(json, path),
-        Commands::Install { audit, npm_args } => run_install(audit, npm_args),
+        Commands::Install {
+            accept_risk,
+            dry_run,
+            npm_args,
+        } => run_install(accept_risk, dry_run, npm_args),
     }
 }
 
@@ -68,8 +74,8 @@ fn run_inspect(json: bool, path: PathBuf) {
     }
 }
 
-fn run_install(audit: bool, npm_args: Vec<String>) {
-    match commands::install::run(audit, npm_args) {
+fn run_install(accept_risk: bool, dry_run: bool, npm_args: Vec<String>) {
+    match commands::install::run(accept_risk, dry_run, npm_args) {
         Ok(outcome) => {
             let exit_code = outcome.exit_code();
 

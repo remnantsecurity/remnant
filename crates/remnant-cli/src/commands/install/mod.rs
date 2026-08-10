@@ -2,8 +2,9 @@
 //!
 //! This module owns the CLI-facing `install` command boundary: resolving the
 //! full dependency tree via npm itself, fetching and inspecting every resolved
-//! package in-process via `remnant-core`, deciding whether to proceed, and —
-//! only if cleared — materializing the install via `npm ci`. See
+//! package in-process via `remnant-core`, deciding whether to proceed, and
+//! materializing via `npm ci` only when cleared or when the user accepts the
+//! risk. Dry runs stop before materialization. See
 //! `docs/decisions/0051-proactive-install-inspection-architecture.md`.
 
 mod decision;
@@ -21,8 +22,10 @@ pub enum InstallOutcome {
     /// Enforce mode: at least one resolved package did not clear inspection.
     /// `npm ci` never ran.
     Blocked,
-    /// Cleared (or `--audit`) and `npm ci` ran; carries its exit code.
+    /// Cleared (or `--accept-risk`) and `npm ci` ran; carries its exit code.
     Proceeded { npm_exit_code: i32 },
+    /// `--dry-run` completed inspection without running `npm ci`.
+    DryRunCompleted { all_admitted: bool },
 }
 
 impl InstallOutcome {
@@ -31,6 +34,13 @@ impl InstallOutcome {
             InstallOutcome::ResolutionFailed { npm_exit_code } => npm_exit_code,
             InstallOutcome::Blocked => 2,
             InstallOutcome::Proceeded { npm_exit_code } => npm_exit_code,
+            InstallOutcome::DryRunCompleted { all_admitted } => {
+                if all_admitted {
+                    0
+                } else {
+                    2
+                }
+            }
         }
     }
 }
@@ -90,10 +100,15 @@ pub fn format_error_summary(error: &InstallError) -> Vec<String> {
 
 /// Runs `npm install <args> --package-lock-only` to resolve the full
 /// dependency tree, fetches and inspects every resolved package in-process,
-/// and — only if every package clears (or `audit` is set) — materializes the
-/// install via `npm ci`. `audit` reports non-admitted packages without
-/// blocking; enforce mode (the default) aborts before `npm ci` ever runs.
-pub fn run(audit: bool, npm_args: Vec<String>) -> Result<InstallOutcome, InstallError> {
+/// and materializes the install via `npm ci` only if every package clears or
+/// `accept_risk` is set. `dry_run` reports the same non-admitted packages but
+/// never runs `npm ci`; enforce mode (the default) aborts before `npm ci` when
+/// any package is not admitted.
+pub fn run(
+    accept_risk: bool,
+    dry_run: bool,
+    npm_args: Vec<String>,
+) -> Result<InstallOutcome, InstallError> {
     let resolve_status =
         npm::run_npm_resolve(npm_args).map_err(InstallError::NpmResolveSpawnFailed)?;
 
@@ -120,17 +135,24 @@ pub fn run(audit: bool, npm_args: Vec<String>) -> Result<InstallOutcome, Install
 
     let verdicts = runtime.block_on(verdict::inspect_resolved_packages(&fetcher, &packages));
 
-    let enforced = !audit;
+    let non_blocking = accept_risk || dry_run;
     for package_verdict in &verdicts {
-        if let Some(line) = decision::format_verdict_line(package_verdict, enforced) {
+        if let Some(line) = decision::format_verdict_line(package_verdict, !non_blocking) {
             println!("{line}");
         }
     }
-    println!("{}", decision::format_summary_line(&verdicts, audit));
+    println!("{}", decision::format_summary_line(&verdicts, non_blocking));
 
-    match decision::decide(&verdicts, audit) {
+    match decision::decide(&verdicts, non_blocking) {
         decision::InstallDecision::Abort => Ok(InstallOutcome::Blocked),
         decision::InstallDecision::Proceed => {
+            if dry_run {
+                let all_admitted = verdicts
+                    .iter()
+                    .all(|verdict| verdict.category == verdict::VerdictCategory::Admitted);
+                return Ok(InstallOutcome::DryRunCompleted { all_admitted });
+            }
+
             let ci_status = npm::run_npm_ci().map_err(InstallError::NpmMaterializeSpawnFailed)?;
             Ok(InstallOutcome::Proceeded {
                 npm_exit_code: ci_status.code().unwrap_or(1),

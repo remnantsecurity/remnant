@@ -18,7 +18,7 @@ fn aborts_when_any_verdict_is_blocked_in_enforce_mode() {
 }
 
 #[test]
-fn proceeds_in_audit_mode_even_with_blocked_verdicts() {
+fn proceeds_in_non_blocking_mode_even_with_blocked_verdicts() {
     let verdicts = vec![package_verdict(VerdictCategory::BlockedPolicy)];
 
     assert_eq!(decide(&verdicts, true), InstallDecision::Proceed);
@@ -63,13 +63,13 @@ fn formats_multiple_finding_ids_with_comma_space_separator() {
 }
 
 #[test]
-fn formats_audit_would_have_blocked_line() {
+fn formats_non_blocking_flagged_line() {
     let verdict = policy_blocked_verdict();
 
     assert_eq!(
         format_verdict_line(&verdict, false),
         Some(String::from(
-            "remnant: audit - example@1.0.0 would have blocked: blocked_policy [install-scripts-disallowed]"
+            "remnant: flagged example@1.0.0: blocked_policy [install-scripts-disallowed]"
         ))
     );
 }
@@ -83,7 +83,7 @@ fn summarizes_all_admitted_packages() {
 
     assert_eq!(
         format_summary_line(&verdicts, false),
-        "remnant: analyzed 2 package(s), 2 admitted, 0 blocked, 0 flagged in audit mode"
+        "remnant: analyzed 2 package(s), 2 admitted, 0 blocked"
     );
 }
 
@@ -96,12 +96,12 @@ fn summarizes_blocked_packages_in_enforce_mode() {
 
     assert_eq!(
         format_summary_line(&verdicts, false),
-        "remnant: analyzed 2 package(s), 1 admitted, 1 blocked, 0 flagged in audit mode"
+        "remnant: analyzed 2 package(s), 1 admitted, 1 blocked"
     );
 }
 
 #[test]
-fn summarizes_flagged_packages_in_audit_mode() {
+fn summarizes_flagged_packages_in_non_blocking_mode() {
     let verdicts = vec![
         package_verdict(VerdictCategory::Admitted),
         package_verdict(VerdictCategory::BlockedPolicy),
@@ -109,7 +109,7 @@ fn summarizes_flagged_packages_in_audit_mode() {
 
     assert_eq!(
         format_summary_line(&verdicts, true),
-        "remnant: analyzed 2 package(s), 1 admitted, 0 blocked, 1 flagged in audit mode"
+        "remnant: analyzed 2 package(s), 1 admitted, 1 flagged"
     );
 }
 

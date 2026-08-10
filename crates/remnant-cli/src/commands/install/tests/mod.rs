@@ -20,3 +20,22 @@ fn proceeded_outcome_mirrors_npm_cis_own_exit_code() {
         137
     );
 }
+
+#[test]
+fn dry_run_completed_outcome_is_zero_when_all_admitted() {
+    assert_eq!(
+        InstallOutcome::DryRunCompleted { all_admitted: true }.exit_code(),
+        0
+    );
+}
+
+#[test]
+fn dry_run_completed_outcome_is_two_when_not_all_admitted() {
+    assert_eq!(
+        InstallOutcome::DryRunCompleted {
+            all_admitted: false
+        }
+        .exit_code(),
+        2
+    );
+}
