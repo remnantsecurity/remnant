@@ -21,6 +21,11 @@ frequency must not be described as a false-positive rate without a labeled
 denominator. Network collection, production integration, policy changes, and
 promotion into a crate under `crates/` require their own explicit review.
 
+Evaluation packages are excluded from the workspace default members and
+standing CI. When changing an evaluation, run the validation commands
+documented in that evaluation's README. If an evaluation becomes continuously
+maintained, add appropriately scoped CI as part of that transition.
+
 Current evaluation areas:
 
 - [`typosquat-signals/`](typosquat-signals/) — evaluates reproducible signals
