@@ -1,0 +1,12 @@
+{
+  "dataset_file": "npm-sample-synthetic-placeholder.jsonl",
+  "source": "synthetic-placeholder-for-harness-testing",
+  "retrieved": "2026-08-15",
+  "selection_rule": "hand-written synthetic package names for exercising evaluation-harness self-comparison; not a registry sample",
+  "cutoff": "n/a",
+  "content_sha256": "778d58b3986c69a67f3e88d30f07469256499f849c4b42413b854600a18d6d74",
+  "sort_rule": "ascending byte order of name; duplicate names removed",
+  "license": "n/a - synthetic placeholder data, not redistributed real-world data",
+  "includes_scoped_and_unscoped": false,
+  "is_synthetic_placeholder": true
+}
