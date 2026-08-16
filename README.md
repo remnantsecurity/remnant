@@ -278,6 +278,7 @@ Cargo.toml                    # workspace root
 crates/remnant-core/          # shared artifact fetch and integrity verification library for Remnant
 crates/remnant-cli/           # crates.io package; installs the remnant binary
 crates/remnant-cli/fixtures/  # inert package fixture source material
+evaluations/                  # non-publishable, reproducible capability evaluations
 integrations/                 # standalone experimental integrations
 .github/                      # CI workflows and local composite actions
 ```

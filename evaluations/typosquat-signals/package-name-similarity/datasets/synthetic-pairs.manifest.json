@@ -1,0 +1,12 @@
+{
+  "dataset_file": "synthetic-pairs.jsonl",
+  "source": "synthetic-placeholder-for-harness-testing",
+  "retrieved": "2026-08-15",
+  "selection_rule": "hand-written synthetic records for exercising the evaluation harness's own I/O and computation; not a research corpus",
+  "cutoff": "n/a",
+  "content_sha256": "374d015f7b31b057e3c6d381ca66e0f780d5dd6ef710bba98877dd6dd0b33c87",
+  "sort_rule": "ascending byte order by (candidate_name, reference_name); exact duplicate pairs removed",
+  "license": "n/a - synthetic placeholder data, not redistributed real-world data",
+  "includes_scoped_and_unscoped": false,
+  "is_synthetic_placeholder": true
+}

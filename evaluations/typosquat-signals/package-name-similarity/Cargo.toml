@@ -1,0 +1,12 @@
+[package]
+name = "remnant-evaluation-package-name-similarity"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+description = "Reproducible evaluation harness for package-name lexical similarity."
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+clap = { version = "4.6.1", features = ["derive"] }
+serde_json = "1.0.145"

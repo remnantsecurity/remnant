@@ -1,4 +1,8 @@
 [workspace]
-members = ["crates/remnant-cli", "crates/remnant-core"]
+members = [
+    "crates/remnant-cli",
+    "crates/remnant-core",
+    "evaluations/typosquat-signals/package-name-similarity",
+]
 default-members = ["crates/remnant-cli"]
 resolver = "3"
