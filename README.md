@@ -1,116 +1,89 @@
 # Remnant
 
-Remnant is a deterministic artifact admission tool. Today, that means npm packages: individual `.tgz` artifacts and full `npm install` dependency trees.
+**Deterministic npm artifact admission before installation.**
 
-The artifact is the source of truth. Remnant inspects the bytes, archive structure, and package metadata that would actually enter your build. It does not decide trust from package popularity, maintainer reputation, download counts, opaque risk scores, or hidden vendor intelligence.
+Remnant is an open-source Rust CLI for inspecting exact npm package artifacts and gating full dependency trees before package code is materialized in `node_modules`. It turns package admission into a reproducible policy decision grounded in artifact bytes, archive structure, package metadata, and lockfile integrity—not popularity, maintainer reputation, download counts, or an opaque risk score.
 
-Remnant's goal is simple:
+Rather than asking whether a package _looks trustworthy_, Remnant asks a narrower question that can be answered and audited:
 
-> Make package admission reproducible, explainable, and safe to automate.
+> Can this exact artifact cross this trust boundary under these documented rules?
 
-## The Problem
+## Why Remnant Exists
 
-Modern JavaScript builds routinely admit third-party package artifacts into developer machines, CI runners, and production build pipelines. Those artifacts may contain install hooks, unusual archive structures, unsafe paths, malformed metadata, or dependency declarations that change how code enters the build, and by the time you notice, the code has already run.
+Remnant began with direct exposure to modern developer-tooling attack surfaces and a simple realization: package installation often puts third-party code onto developer machines and CI runners before anyone makes an explicit trust decision about the artifact that arrived.
 
-Many tools answer supply-chain risk with broad scoring systems or platform-specific intelligence. A risk score describes how a package compares inside someone else's model. It doesn't show whether _this exact artifact_ satisfies reproducible admission rules, and you can't reproduce it yourself.
+That artifact may contain install hooks, unsafe archive paths, malformed metadata, unexpected dependency declarations, or content that different tools interpret differently. Once it has been installed—or executed during installation—the most useful security boundary has already been crossed.
 
-This project started from direct exposure to modern developer tooling attack surfaces, not a theoretical supply-chain scenario.
+Remnant moves the decision earlier:
 
-## What Remnant Does About It
+```text
+exact npm artifact
+        ↓
+bounded, non-executing inspection
+        ↓
+deterministic artifact facts
+        ↓
+documented policy rules
+        ↓
+admit or block before installation
+```
 
-Remnant starts from a narrower rule:
+The artifact is the source of truth. A package should pass because the bytes that would enter the build satisfy explicit checks—not because the package is popular, familiar, or produced by a historically trusted maintainer.
 
-> If a package artifact cannot pass reproducible local inspection, it should not enter the build.
+## What Ships Today
 
-It focuses on:
+The current release, v0.3.0, provides two CLI commands and a GitHub Action built on the same inspection engine:
 
-- read-only npm tarball intake;
-- deterministic archive traversal;
-- archive path safety validation;
-- explicit archive and metadata resource limits;
-- `package/package.json` inspection without archive extraction;
-- deterministic package metadata parsing;
-- install hook detection;
-- suspicious file detection;
-- bounded dependency metadata parsing;
-- deterministic dependency policy checks;
-- human-readable and JSON output;
-- CI-friendly exit codes.
+- **`remnant inspect`** examines an npm `.tgz` already on disk. It performs read-only, offline inspection and emits human-readable or JSON results with deterministic exit codes.
+- **`remnant install`** resolves a complete npm dependency tree, fetches and verifies each independently resolved package artifact, inspects the tree, and runs `npm ci` only after every package is admitted. `--dry-run` reports the same findings without installing; `--accept-risk` makes an explicit decision to continue after findings are reported.
+- **GitHub Action** (`remnant-inspect`) applies the same artifact checks in CI.
 
-Remnant intentionally does not:
+Before policy evaluation, each inspected artifact must pass bounded archive and metadata parsing. Remnant rejects unsafe paths, duplicate normalized paths, links and unsupported entry types, malformed metadata, and inputs that exceed documented resource limits. During `remnant install`, it also blocks when downloaded bytes do not match the lockfile integrity value or when integrity cannot be established. It does not extract an archive to inspect it or execute package-controlled code.
 
-- execute package-controlled code;
-- extract package archives during inspection;
-- follow package-controlled symlinks or hardlinks;
-- use package popularity as a trust input;
-- use maintainer reputation as a trust input;
-- rely on opaque reputation or risk scores;
-- send package data to a hosted service.
+The current strict policy baseline rejects:
 
-That's not because ecosystem intelligence is useless. Admission decisions should be reproducible from explicit evidence, and a hosted analysis step works against that.
+- npm install lifecycle hooks;
+- the suspicious archive path `package/.npmrc`; and
+- local `file:` dependency specifiers.
 
-### Trust Model
+Every block names its category, and policy blocks name the rule that caused them. There is no hidden score behind the verdict.
 
-Remnant treats package artifacts as untrusted input. A package should pass because the artifact satisfies documented checks, not because it is popular, familiar, or produced by a historically trusted maintainer.
+## What Remnant Does Not Claim
 
-The inspection model is built around these principles:
+Remnant is an admission tool under active development, not a universal malware detector. Passing v0.3.0 means that an artifact passed the documented archive, integrity, metadata, and policy checks in that release. It does **not** prove that the package is benign.
 
-1. Deterministic behavior.
-2. Explicit trust boundaries.
-3. Bounded parsing of untrusted input.
-4. No implicit package execution.
-5. Explainable policy failures.
-6. Reproducible output for humans and automation.
+The current release does not:
 
-### Current Policy Checks
+- execute packages in a behavioral sandbox;
+- perform general JavaScript source-behavior analysis;
+- replace vulnerability, license, or software-composition analysis;
+- establish publisher identity or verify publish provenance;
+- infer safety from popularity, reputation, or community behavior;
+- use a hosted analysis service or require an account for CLI inspection; or
+- detect every malicious package or attack technique.
 
-Remnant currently evaluates a strict baseline policy after archive and metadata parsing succeeds:
+Those boundaries are deliberate. Security tooling loses credibility when a narrow signal is marketed as proof of safety.
 
-- rejecting install lifecycle hooks;
-- rejecting the suspicious archive path `package/.npmrc`;
-- rejecting local `file:` dependency specifiers.
+## Where Remnant Is Going
 
-Policy checks use already-validated archive paths and package metadata. They do not execute package code or inspect source behavior dynamically.
+The immediate direction is deeper, demonstrated protection against malicious installation—not a longer feature checklist or a more impressive-looking risk score. New admission rules should be backed by reproducible artifact evidence, evaluated against malicious and benign examples, and shown to stop a defined behavior before installation without hiding uncertainty from the user.
 
-### Resource Limits & Archive Safety
+Longer term, npm is the first proving ground for a broader software trust model:
 
-Before policy ever runs, every artifact has to clear deterministic, bounded parsing. These checks reject malformed or resource-exhausting input outright, regardless of policy configuration:
+```text
+untrusted software → verifiable evidence → explicit policy → explainable decision
+```
 
-| Limit | Value |
-|---|--:|
-| Archive entries | 10,000 |
-| Single archive entry size | 32 MiB |
-| Total declared archive size | 256 MiB |
-| Decompressed stream read limit | 300 MiB |
-| `package/package.json` size | 1 MiB |
-| Archive entry path length | 1,024 bytes |
-| Package name length | 214 bytes |
-| Package version length | 128 bytes |
-| Dependency name length | 214 bytes |
-| Dependency version specifier length | 512 bytes |
-| Dependencies per section | 1,000 |
+The artifact type and delivery mechanism can evolve. The trust contract should not: exact inputs, bounded inspection, documented rules, and evidence a user can independently evaluate.
 
-Alongside those bounds, archive traversal enforces:
-
-- path traversal (`../`), absolute paths, and backslash separators are rejected;
-- two entries that normalize to the same logical path are rejected as duplicates;
-- symlinks, hard links, and any other non-regular-file entry type are rejected;
-- directory entries are accepted structurally (they carry no content of their own), but everything else must be a regular file.
-
-## Current Offerings
-
-Remnant ships two CLI commands and a GitHub Action, all built on the same inspection engine:
-
-- **`remnant inspect`**: inspect a single npm `.tgz` artifact you already have on disk. No network access required.
-- **`remnant install`**: a drop-in gate in front of your real `npm install`. It resolves your full dependency tree via `npm` itself, fetches and inspects every resolved package in-process, and only materializes the install (via `npm ci`) if every package clears, or if you've explicitly accepted the risk of proceeding anyway (`--accept-risk`). A `--dry-run` mode reports the same findings without ever running `npm ci` at all.
-- **GitHub Action** (`remnant-inspect`): wraps `remnant inspect` for CI, so a malformed or policy-failing artifact fails the build with a deterministic exit code instead of a heuristic risk score.
+The bet behind Remnant is that software trust should behave more like a build property than a vendor opinion—specific inputs, explicit rules, and reproducible outputs.
 
 ## Installation
 
 Install the Remnant CLI from crates.io:
 
 ```bash
-cargo install remnant-cli
+cargo install remnant-cli --version 0.3.0 --locked
 ```
 
 The crates.io package is named `remnant-cli`; the installed command is `remnant`.
@@ -189,19 +162,19 @@ cargo run -- install --dry-run
 
 ## GitHub Actions
 
-Remnant includes a composite GitHub Action for CI admission checks. The action builds Remnant from the tagged action repository source with Cargo and then runs `remnant inspect`; it does not download npm packages, execute package-controlled code, or use a hosted analysis service.
+Remnant includes a composite GitHub Action for CI admission checks. The action builds Remnant from the pinned action repository source with Cargo and then runs `remnant inspect`; it does not download npm packages, execute package-controlled code, or use a hosted analysis service.
 
 Use it after your workflow has produced or obtained the `.tgz` artifact you want to inspect:
 
 ```yaml
 - name: Inspect npm package artifact with Remnant
-  uses: remnantsecurity/remnant/.github/actions/remnant-inspect@v0.1.0
+  uses: remnantsecurity/remnant/.github/actions/remnant-inspect@9cf1da0edb9ed7a185a2243791b26b8e8219e61e # v0.3.0
   with:
     artifact: path/to/package.tgz
     json: "true"
 ```
 
-Replace `v0.1.0` with the release tag you intend to trust. Pinning to a full commit SHA is also supported by GitHub Actions and may be preferable for stricter CI supply-chain control.
+Always pin the action to a verified, full-length commit SHA. GitHub currently identifies this as the only immutable way to reference an action; a tag or branch can be moved if the repository is compromised. The `# v0.3.0` comment preserves the human-readable release mapping without weakening the pin. When upgrading, verify the new release commit in the official Remnant repository, review the change, and update the SHA and version comment together. See [GitHub's secure-use guidance](https://docs.github.com/en/actions/reference/security/secure-use#using-third-party-actions).
 
 ## Example
 
@@ -217,6 +190,31 @@ exit code: 1
 ```
 
 The archive is rejected before a single byte is written to disk: a deterministic, explainable rejection instead of a heuristic risk score. The same failure is reported as structured JSON via `--json`.
+
+## Resource Limits & Archive Safety
+
+Before policy ever runs, every artifact has to clear deterministic, bounded parsing. These checks reject malformed or resource-exhausting input outright, regardless of policy configuration:
+
+| Limit | Value |
+|---|--:|
+| Archive entries | 10,000 |
+| Single archive entry size | 32 MiB |
+| Total declared archive size | 256 MiB |
+| Decompressed stream read limit | 300 MiB |
+| `package/package.json` size | 1 MiB |
+| Archive entry path length | 1,024 bytes |
+| Package name length | 214 bytes |
+| Package version length | 128 bytes |
+| Dependency name length | 214 bytes |
+| Dependency version specifier length | 512 bytes |
+| Dependencies per section | 1,000 |
+
+Alongside those bounds, archive traversal enforces:
+
+- path traversal (`../`), absolute paths, and backslash separators are rejected;
+- two entries that normalize to the same logical path are rejected as duplicates;
+- symlinks, hard links, and any other non-regular-file entry type are rejected;
+- directory entries are accepted structurally (they carry no content of their own), but everything else must be a regular file.
 
 ## Exit Codes
 
