@@ -1,13 +1,6 @@
 name: Build and push proxy image
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/proxy-image.yml'
-      - 'crates/**'
-      - 'integrations/npm-registry-proxy/**'
   workflow_dispatch:
 
 permissions:
