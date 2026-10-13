@@ -3,8 +3,9 @@ use super::*;
 mod setup;
 
 use setup::{
-    build_tarball_with_package_json, packument_fallback_fetcher, spawn_https_packument_server,
-    spawn_tarball_server, test_temp_path, unbound_https_upstream_registry_url, unbound_local_url,
+    TARBALL_CONTENT_TYPE, build_tarball_with_package_json, self_signed_fixture_fetcher,
+    spawn_https_packument_and_tarball_server, spawn_https_server,
+    spawn_https_server_for_two_responses, test_temp_path, unbound_https_upstream_registry_url,
 };
 
 const ADMITTED_PACKAGE_JSON: &[u8] = br#"{
@@ -21,12 +22,12 @@ const POLICY_BLOCKED_INTEGRITY: &str = "sha512-ZbsxrH7gEB+Jaibt015kjjXkirp3yicGW
 #[tokio::test]
 async fn admits_a_clean_resolved_package() {
     let bytes = build_tarball_with_package_json(ADMITTED_PACKAGE_JSON);
-    let resolved_url = spawn_tarball_server(bytes).await;
-    let fetcher = test_fetcher();
+    let upstream_registry = spawn_https_server(bytes, TARBALL_CONTENT_TYPE).await;
+    let fetcher = self_signed_fixture_fetcher(&upstream_registry);
     let package = ResolvedPackage {
         name: String::from("lockfile-name"),
         version: String::from("9.9.9"),
-        resolved_url: Some(resolved_url),
+        resolved_url: Some(format!("{upstream_registry}/package.tgz")),
         integrity: Some(String::from(ADMITTED_INTEGRITY)),
     };
 
@@ -42,10 +43,14 @@ async fn admits_a_clean_resolved_package() {
 #[tokio::test]
 async fn blocks_on_integrity_mismatch() {
     let bytes = build_tarball_with_package_json(ADMITTED_PACKAGE_JSON);
-    let package = resolved_package(spawn_tarball_server(bytes).await, Some(WRONG_INTEGRITY));
+    let upstream_registry = spawn_https_server(bytes, TARBALL_CONTENT_TYPE).await;
+    let package = resolved_package(
+        format!("{upstream_registry}/package.tgz"),
+        Some(WRONG_INTEGRITY),
+    );
 
     let verdict = inspect_resolved_package(
-        &test_fetcher(),
+        &self_signed_fixture_fetcher(&upstream_registry),
         &package,
         &test_temp_path("integrity-mismatch.tgz"),
     )
@@ -58,10 +63,11 @@ async fn blocks_on_integrity_mismatch() {
 #[tokio::test]
 async fn blocks_on_missing_integrity() {
     let bytes = build_tarball_with_package_json(ADMITTED_PACKAGE_JSON);
-    let package = resolved_package(spawn_tarball_server(bytes).await, None);
+    let upstream_registry = spawn_https_server(bytes, TARBALL_CONTENT_TYPE).await;
+    let package = resolved_package(format!("{upstream_registry}/package.tgz"), None);
 
     let verdict = inspect_resolved_package(
-        &test_fetcher(),
+        &self_signed_fixture_fetcher(&upstream_registry),
         &package,
         &test_temp_path("missing-integrity.tgz"),
     )
@@ -73,13 +79,14 @@ async fn blocks_on_missing_integrity() {
 
 #[tokio::test]
 async fn blocks_on_archive_parse_failure() {
+    let upstream_registry = spawn_https_server(NON_GZIP_BYTES.to_vec(), TARBALL_CONTENT_TYPE).await;
     let package = resolved_package(
-        spawn_tarball_server(NON_GZIP_BYTES.to_vec()).await,
+        format!("{upstream_registry}/package.tgz"),
         Some(NON_GZIP_INTEGRITY),
     );
 
     let verdict = inspect_resolved_package(
-        &test_fetcher(),
+        &self_signed_fixture_fetcher(&upstream_registry),
         &package,
         &test_temp_path("archive-parse-failure.tgz"),
     )
@@ -91,13 +98,14 @@ async fn blocks_on_archive_parse_failure() {
 #[tokio::test]
 async fn blocks_on_policy_violation() {
     let bytes = build_policy_blocked_tarball();
+    let upstream_registry = spawn_https_server(bytes, TARBALL_CONTENT_TYPE).await;
     let package = resolved_package(
-        spawn_tarball_server(bytes).await,
+        format!("{upstream_registry}/package.tgz"),
         Some(POLICY_BLOCKED_INTEGRITY),
     );
 
     let verdict = inspect_resolved_package(
-        &test_fetcher(),
+        &self_signed_fixture_fetcher(&upstream_registry),
         &package,
         &test_temp_path("policy-violation.tgz"),
     )
@@ -110,10 +118,16 @@ async fn blocks_on_policy_violation() {
 
 #[tokio::test]
 async fn reports_error_when_upstream_fetch_fails() {
-    let package = resolved_package(unbound_local_url(), Some(ADMITTED_INTEGRITY));
+    let upstream_registry = unbound_https_upstream_registry_url();
+    let fetcher = UpstreamFetcher::new(&upstream_registry)
+        .expect("unbound loopback registry URL should be accepted");
+    let package = resolved_package(
+        format!("{upstream_registry}/package.tgz"),
+        Some(ADMITTED_INTEGRITY),
+    );
 
     let verdict = inspect_resolved_package(
-        &test_fetcher(),
+        &fetcher,
         &package,
         &test_temp_path("upstream-fetch-failure.tgz"),
     )
@@ -121,6 +135,35 @@ async fn reports_error_when_upstream_fetch_fails() {
 
     assert_eq!(verdict.category, VerdictCategory::Error);
     assert!(verdict.finding_ids.is_empty());
+    assert!(
+        verdict
+            .detail
+            .starts_with("upstream tarball request failed:"),
+        "unexpected detail: {}",
+        verdict.detail
+    );
+}
+
+#[tokio::test]
+async fn reports_error_when_resolved_url_is_not_the_configured_registry_authority() {
+    let package = resolved_package(
+        String::from("https://other.example.test/package.tgz"),
+        Some(ADMITTED_INTEGRITY),
+    );
+
+    let verdict = inspect_resolved_package(
+        &test_fetcher(),
+        &package,
+        &test_temp_path("off-authority-resolved-url.tgz"),
+    )
+    .await;
+
+    assert_eq!(verdict.category, VerdictCategory::Error);
+    assert!(verdict.finding_ids.is_empty());
+    assert_eq!(
+        verdict.detail,
+        "upstream tarball URL host is not the configured upstream registry"
+    );
 }
 
 #[test]
@@ -168,13 +211,13 @@ fn rejects_packument_response_with_non_string_tarball_field() {
 
 #[tokio::test]
 async fn admits_a_package_with_dist_metadata_resolved_via_packument_fallback() {
-    let tarball_bytes = build_tarball_with_package_json(ADMITTED_PACKAGE_JSON);
-    let tarball_url = spawn_tarball_server(tarball_bytes).await;
-    let packument_body = format!(
-        r#"{{"name":"fixture-package","versions":{{"1.0.0":{{"dist":{{"tarball":"{tarball_url}","integrity":"{ADMITTED_INTEGRITY}"}}}}}}}}"#
-    );
-    let upstream_registry = spawn_https_packument_server(packument_body.into_bytes()).await;
-    let fetcher = packument_fallback_fetcher(&upstream_registry);
+    let upstream_registry = spawn_https_packument_and_tarball_server(
+        "/fixture-package/-/fixture-package-1.0.0.tgz",
+        ADMITTED_INTEGRITY,
+        build_tarball_with_package_json(ADMITTED_PACKAGE_JSON),
+    )
+    .await;
+    let fetcher = self_signed_fixture_fetcher(&upstream_registry);
     let package = ResolvedPackage {
         name: String::from("fixture-package"),
         version: String::from("1.0.0"),
@@ -194,7 +237,7 @@ async fn admits_a_package_with_dist_metadata_resolved_via_packument_fallback() {
 
 #[tokio::test]
 async fn reports_error_when_packument_fallback_fetch_fails() {
-    let fetcher = packument_fallback_fetcher(&unbound_https_upstream_registry_url());
+    let fetcher = self_signed_fixture_fetcher(&unbound_https_upstream_registry_url());
     let package = ResolvedPackage {
         name: String::from("fixture-package"),
         version: String::from("1.0.0"),
@@ -215,17 +258,26 @@ async fn reports_error_when_packument_fallback_fetch_fails() {
 
 #[tokio::test]
 async fn inspects_every_resolved_package_in_the_batch() {
+    let upstream_registry = spawn_https_server_for_two_responses(
+        build_tarball_with_package_json(ADMITTED_PACKAGE_JSON),
+        build_policy_blocked_tarball(),
+        TARBALL_CONTENT_TYPE,
+    )
+    .await;
     let admitted_package = resolved_package(
-        spawn_tarball_server(build_tarball_with_package_json(ADMITTED_PACKAGE_JSON)).await,
+        format!("{upstream_registry}/admitted.tgz"),
         Some(ADMITTED_INTEGRITY),
     );
     let blocked_package = resolved_package(
-        spawn_tarball_server(build_policy_blocked_tarball()).await,
+        format!("{upstream_registry}/blocked.tgz"),
         Some(POLICY_BLOCKED_INTEGRITY),
     );
 
-    let verdicts =
-        inspect_resolved_packages(&test_fetcher(), &[admitted_package, blocked_package]).await;
+    let verdicts = inspect_resolved_packages(
+        &self_signed_fixture_fetcher(&upstream_registry),
+        &[admitted_package, blocked_package],
+    )
+    .await;
 
     assert_eq!(verdicts.len(), 2);
     assert_eq!(verdicts[0].category, VerdictCategory::Admitted);

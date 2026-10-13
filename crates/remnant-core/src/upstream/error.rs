@@ -3,9 +3,12 @@ use std::fmt;
 use reqwest::StatusCode;
 
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FetchPackumentError {
-    InvalidUpstreamRegistry(String),
+    InvalidUpstreamRegistry,
     UpstreamRegistrySchemeNotHttps,
+    UpstreamRegistryContainsCredentials,
+    UpstreamRegistryContainsFragment,
     ConnectionTimeout,
     TotalFetchTimeout,
     RedirectEncountered(StatusCode),
@@ -20,11 +23,20 @@ pub enum FetchPackumentError {
 impl fmt::Display for FetchPackumentError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FetchPackumentError::InvalidUpstreamRegistry(registry) => {
-                write!(formatter, "upstream registry URL is invalid: {registry}")
+            FetchPackumentError::InvalidUpstreamRegistry => {
+                write!(formatter, "upstream registry URL is invalid")
             }
             FetchPackumentError::UpstreamRegistrySchemeNotHttps => {
                 write!(formatter, "upstream registry URL scheme is not https")
+            }
+            FetchPackumentError::UpstreamRegistryContainsCredentials => {
+                write!(
+                    formatter,
+                    "upstream registry URL contains embedded credentials"
+                )
+            }
+            FetchPackumentError::UpstreamRegistryContainsFragment => {
+                write!(formatter, "upstream registry URL contains a fragment")
             }
             FetchPackumentError::ConnectionTimeout => {
                 write!(formatter, "timed out connecting to upstream registry")
@@ -62,9 +74,15 @@ impl fmt::Display for FetchPackumentError {
 
 impl std::error::Error for FetchPackumentError {}
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FetchTarballError {
     TarballUrlInvalid,
+    TarballUrlSchemeNotHttps,
+    TarballUrlContainsCredentials,
+    TarballUrlContainsFragment,
+    TarballUrlHostNotConfiguredRegistry,
+    TarballUrlPortNotConfiguredRegistry,
     ConnectionTimeout,
     TotalFetchTimeout,
     BodyByteLimitExceeded { limit: usize },
@@ -80,6 +98,30 @@ impl fmt::Display for FetchTarballError {
         match self {
             FetchTarballError::TarballUrlInvalid => {
                 write!(formatter, "upstream tarball URL is invalid")
+            }
+            FetchTarballError::TarballUrlSchemeNotHttps => {
+                write!(formatter, "upstream tarball URL scheme is not https")
+            }
+            FetchTarballError::TarballUrlContainsCredentials => {
+                write!(
+                    formatter,
+                    "upstream tarball URL contains embedded credentials"
+                )
+            }
+            FetchTarballError::TarballUrlContainsFragment => {
+                write!(formatter, "upstream tarball URL contains a fragment")
+            }
+            FetchTarballError::TarballUrlHostNotConfiguredRegistry => {
+                write!(
+                    formatter,
+                    "upstream tarball URL host is not the configured upstream registry"
+                )
+            }
+            FetchTarballError::TarballUrlPortNotConfiguredRegistry => {
+                write!(
+                    formatter,
+                    "upstream tarball URL port is not the configured upstream registry port"
+                )
             }
             FetchTarballError::ConnectionTimeout => {
                 write!(formatter, "timed out connecting to upstream tarball")

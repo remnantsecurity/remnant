@@ -1,6 +1,6 @@
 [package]
 name = "remnant-cli"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 rust-version = "1.95"
 description = "Deterministic package artifact admission for local and CI supply-chain checks."
@@ -26,7 +26,7 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
 flate2 = "1.1.9"
-remnant-core = { path = "../remnant-core", version = "0.1.0" }
+remnant-core = { path = "../remnant-core", version = "0.2.0" }
 serde_json = "1.0.145"
 tar = "0.4.46"
 tokio = { version = "1.48.0", features = ["net", "rt", "time"] }
