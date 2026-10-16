@@ -150,6 +150,18 @@ remnant: flagged some-package@1.2.3: blocked_policy [install-scripts-disallowed]
 remnant: analyzed 42 package(s), 41 admitted, 1 flagged
 ```
 
+#### Upstream registry
+
+`remnant install` fetches package metadata and tarballs from one upstream registry, set by the `REMNANT_UPSTREAM_REGISTRY` environment variable and defaulting to `https://registry.npmjs.org`. This value is the only network authority Remnant grants itself for package fetches; lockfile and registry metadata cannot direct Remnant anywhere else.
+
+```bash
+REMNANT_UPSTREAM_REGISTRY=https://npm.example.internal/ remnant install
+```
+
+The value must be an `https` URL. A value containing a username, password, or fragment (`#...`) is rejected at startup, so credentials embedded in the URL, which earlier versions accepted, now fail. Every tarball URL Remnant fetches, whether from your lockfile's `resolved` field or from registry metadata, must use `https` and match the configured host and effective port exactly (an omitted port means `443`). Anything else is refused before any request is made and reported as an `error` verdict.
+
+Remnant does not read npm's configuration: it does not inherit `registry` or scope-specific registry settings from any `.npmrc`, npm environment variables, or npm credentials. If you install through a company mirror, set `REMNANT_UPSTREAM_REGISTRY` to that mirror and configure npm to use the same registry separately. Only one registry authority is supported; scope-specific registries, multiple registries, and registry authentication are not supported today.
+
 ### During local development from source
 
 ```bash
@@ -245,7 +257,7 @@ Every non-admitted package in `remnant install`'s output is tagged with a catego
 | `blocked_policy` | The package's `package.json` or archive contents tripped one of the policy rules below. The specific rule ID(s) are in the trailing `[...]`. |
 | `blocked_integrity` | The fetched tarball's bytes didn't match the version pinned in your lockfile, or no integrity hash was available to check against at all. |
 | `blocked_parse` | The tarball failed archive-safety validation (unsafe path, a resource limit exceeded, a duplicate archive entry; see Known Limitations) or its `package.json` failed to parse. |
-| `error` | Inspection couldn't complete for a reason unrelated to the package's own content: a network fetch failed, or (for a lockfile entry missing `resolved` metadata) the fallback registry lookup failed. Not a judgment about the package itself; treat it as "try again" rather than "this package is bad." |
+| `error` | Inspection couldn't complete. This can be a transient failure (a network fetch failed or, for a lockfile entry missing `resolved` metadata, the fallback registry lookup failed), but it can also mean Remnant refused to fetch a tarball URL that was not an admissible HTTPS URL for the configured upstream registry authority (see [Upstream registry](#upstream-registry)). Not a judgment about the package's own content. Repeated errors should be investigated, including your registry configuration and lockfile metadata, rather than simply retried. Do not use `--accept-risk` merely to bypass such a refusal: `npm ci` may independently use the rejected lockfile URL. |
 
 ### Policy Rules
 

@@ -13,7 +13,7 @@ use limits::{
 };
 use url::{
     CONNECT_TIMEOUT, DEFAULT_UPSTREAM_REGISTRY, INSTALL_V1_ACCEPT, TOTAL_FETCH_TIMEOUT,
-    build_packument_url, parse_upstream_registry,
+    build_packument_url, parse_admissible_tarball_url, parse_upstream_registry,
 };
 
 pub struct UpstreamFetcher {
@@ -100,7 +100,7 @@ impl UpstreamFetcher {
     }
 
     pub async fn fetch_tarball_bytes(&self, url: &str) -> Result<Vec<u8>, FetchTarballError> {
-        let url = Url::parse(url).map_err(|_| FetchTarballError::TarballUrlInvalid)?;
+        let url = parse_admissible_tarball_url(&self.upstream_registry, url)?;
 
         let fetch_result = tokio::time::timeout(
             TARBALL_FETCH_TIMEOUT,
